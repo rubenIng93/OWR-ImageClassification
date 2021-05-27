@@ -9,7 +9,6 @@ class Cifar100Dataset(Dataset):
     The constructor accepts as argument:
     - the split -> (train, test)
     - the seed
-    - the transformation required
     '''
     def __init__(self, split, seed):
 
