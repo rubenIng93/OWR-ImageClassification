@@ -5,6 +5,9 @@ import random
 import numpy as np
 from PIL import Image
 
+#TODO separate seed from the dataset?
+#TODO function which maps the labels?
+
 class Cifar100Dataset(Dataset):
 
     '''
