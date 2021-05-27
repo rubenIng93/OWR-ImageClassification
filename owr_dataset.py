@@ -75,6 +75,13 @@ class Cifar100Dataset(Dataset):
             (self.subClasses[i+1], self.actual_classes)
         )
 
+    def change_subclasses(self, split):
+        '''
+        method that change the split of 10 classes 
+        according to the parameter split
+        '''
+        self.actual_classes = self.subClasses[split]
+
     
     
     def get_imgs_by_target(self):
