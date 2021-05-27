@@ -1,7 +1,6 @@
 from torch.utils.data import Dataset
 import torchvision
 from torchvision import transforms
-from PIL import Image
 import random
 import numpy as np
 
@@ -11,11 +10,13 @@ class Cifar100Dataset(Dataset):
     The constructor accepts as argument:
     - the split -> (train, test)
     - the seed
+    - the transformation
     '''
-    def __init__(self, split, seed):
+    def __init__(self, split, seed, transform):
 
         self.split = split
         self.seed = seed
+        self.transform = transform
         # dictionary which will contains the random splits 
         # of 10 classes (k=split, v=[random_classes])
         self.subClasses = {}
@@ -29,13 +30,7 @@ class Cifar100Dataset(Dataset):
                 root='./data',
                 train=True,
                 download=True,
-                transform=transforms.Compose(
-                    [transforms.RandomCrop(size = 32, padding=4),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ToTensor(),
-                    transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))]
-                    # normalized wrt the real cifar100 dataset
-                )
+                transform=transform
             )
         
         else:
@@ -43,12 +38,11 @@ class Cifar100Dataset(Dataset):
                 root='./data',
                 train=False,
                 download=True,
-                transform=transforms.Compose(
-                    [transforms.ToTensor(),
-                    transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))]
-                    # normalized wrt the real cifar100 dataset
-                )
+                transform=transform
             )
+
+        # define splits in initialization
+        self.define_splits()
 
     
     def define_splits(self):
@@ -105,7 +99,7 @@ class Cifar100Dataset(Dataset):
         image = self.dataset.data[index]
         label = self.dataset.targets[index]
 
-        image = Image.fromarray(image) # Return a PIL image
+        image = self.transform(image)
 
         # the image is already transformed by the CIFAR100 constructor
 
