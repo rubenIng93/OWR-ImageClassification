@@ -62,8 +62,7 @@ class Cifar100Dataset(Dataset):
         for i in range(10):
             self.subClasses[i] = classes[i*10:i*10+10]
         
-        # set the first split 
-        self.actual_classes = self.subClasses[0]
+        
 
     
     def concatenate_split(self, i):
@@ -87,7 +86,7 @@ class Cifar100Dataset(Dataset):
     def get_imgs_by_target(self):
         '''
         Function that retrieves the indexes of all the images
-        belonging to the classes in 'list_of_target'.
+        belonging to the classes in 'self.actual_classes'.
         It returns a list of indexes
         '''
         idx = []
