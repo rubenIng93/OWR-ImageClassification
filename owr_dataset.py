@@ -1,6 +1,7 @@
 from torch.utils.data import Dataset
 import torchvision
 from torchvision import transforms
+from PIL import Image
 import random
 import numpy as np
 
@@ -103,6 +104,8 @@ class Cifar100Dataset(Dataset):
 
         image = self.dataset.data[index]
         label = self.dataset.targets[index]
+
+        image = Image.fromarray(image) # Return a PIL image
 
         # the image is already transformed by the CIFAR100 constructor
 
