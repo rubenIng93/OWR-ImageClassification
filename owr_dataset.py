@@ -5,7 +5,6 @@ import random
 import numpy as np
 from PIL import Image
 
-#TODO separate seed from the dataset?
 #TODO function which maps the labels?
 
 class Cifar100Dataset(Dataset):
@@ -16,10 +15,10 @@ class Cifar100Dataset(Dataset):
     - the seed
     - the transformation
     '''
-    def __init__(self, split, seed, transform):
+    def __init__(self, split, transform):
 
         self.split = split
-        self.seed = seed
+        #self.seed = seed
         self.transform = transform
         # dictionary which will contains the random splits 
         # of 10 classes (k=split, v=[random_classes])
@@ -46,10 +45,10 @@ class Cifar100Dataset(Dataset):
             )
 
         # define splits in initialization
-        self.define_splits()
+        #self.define_splits()
 
     
-    def define_splits(self):
+    def define_splits(self, seed):
 
         '''
         method that randomly shuffles the classes and 
@@ -57,7 +56,7 @@ class Cifar100Dataset(Dataset):
         '''
 
         classes = np.array(range(0, 100)) # 100 = tot n. of classes
-        random.seed(self.seed)
+        random.seed(seed)
         random.shuffle(classes)
 
         # split the classes in batches of 10 classes each
