@@ -24,7 +24,7 @@ class FileWriter():
         self.datafile = open(filename, 'w')
 
         print('seed\tsplit_0\tsplit_1\tsplit_2\tsplit_3\tsplit_4\tsplit_5\tsplit_6\tsplit_7\tsplit_8\tsplit_9',
-         file=filename)
+         file=self.datafile)
 
     def register_seed(self, accuracy_list):
         print(*accuracy_list, sep='\t', file=self.datafile)
