@@ -1,5 +1,11 @@
 from tqdm import tqdm
 from OWR_Tools.utils import map_label
+from OWR_Tools.resnet import resnet32 as rn32
+from torch.backends import cudnn
+import torch
+import torch.nn as nn
+from torch.utils.data import Subset, DataLoader
+import torch.optim as optim
 
 
 class TrainTester():
@@ -32,11 +38,11 @@ class TrainTester():
         self.running_loss_history = []
         self.running_corrects_history = []
         self.accuracy_per_split = []
-        self.criterion = None
-        self.train_dataloader = None
-        self.test_dataloader = None
-        self.optimizer = None
-        self.scheduler = None
+        self.criterion = ""
+        self.train_dataloader = ""
+        self.test_dataloader = ""
+        self.optimizer = ""
+        self.scheduler = ""
 
         # Optimization of cuda resources
         cudnn.benchmark
@@ -50,11 +56,11 @@ class TrainTester():
             running_corrects = 0.0
 
             # iterate over the batches
-            for input, labels in self.train_dataloader:
+            for inputs, labels in self.train_dataloader:
 
                 # move to GPUs
-                inputs = inputs.to(DEVICE)
-                labels = labels.to(DEVICE)
+                inputs = inputs.cuda()
+                labels = labels.cuda()
                 # map the label in range [0, n_classes - 1]
                 labels = map_label(labels, self.trainset.actual_classes)
                 # transform it in one hot encoding to fit the BCELoss
@@ -85,7 +91,7 @@ class TrainTester():
             self.running_corrects_history.append(epoch_acc)
 
             # display every 5 epochs
-            if e % 5 == 0:
+            if e+1 % 5 == 0:
                 print('epoch: {}/{}, LR={}'
                       .format(e+1, self.epochs, self.scheduler.get_last_lr()))
                 print('training loss: {:.4f},  training accuracy {:.4f} %'
