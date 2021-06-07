@@ -91,7 +91,7 @@ class TrainTester():
             self.running_corrects_history.append(epoch_acc)
 
             # display every 5 epochs
-            if e+1 % 5 == 0:
+            if (e+1) % 5 == 0:
                 print('epoch: {}/{}, LR={}'
                       .format(e+1, self.epochs, self.scheduler.get_last_lr()))
                 print('training loss: {:.4f},  training accuracy {:.4f} %'
