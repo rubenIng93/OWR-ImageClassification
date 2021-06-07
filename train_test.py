@@ -1,6 +1,7 @@
 from tqdm import tqdm
 from OWR_Tools.utils import map_label
 from OWR_Tools.resnet import resnet32 as rn32
+import numpy as np
 from torch.backends import cudnn
 import torch
 import torch.nn as nn
@@ -43,6 +44,8 @@ class TrainTester():
         self.test_dataloader = ""
         self.optimizer = ""
         self.scheduler = ""
+        self.all_targets = ""
+        self.all_predictions = ""
 
         # Optimization of cuda resources
         cudnn.benchmark
@@ -102,6 +105,10 @@ class TrainTester():
 
     def test(self, split):
 
+        # save prediction and targets to get the conf matrix
+        all_targets = []
+        all_predictions = []
+
         # set the network to test mode
         self.net.train(False)
         # initialize the metric for test
@@ -118,6 +125,9 @@ class TrainTester():
             outputs = self.net(images)
             # get the predictions
             _, preds = torch.max(outputs, 1)
+            # concatenate to the global lists
+            self.all_targets = np.concatenate(all_targets, targets.cpu().numpy())
+            self.all_predictions = np.concatenate(all_predictions, preds.cpu().numpy())
             # sum the actual scores to the metric
             running_corrects_test += torch.sum(preds == targets)
 
