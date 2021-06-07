@@ -24,11 +24,11 @@ class FileWriter():
     '''
 
     def __init__(self, filename):
-        
+
         self.datafile = open(filename, 'w')
 
         print('seed\tsplit_0\tsplit_1\tsplit_2\tsplit_3\tsplit_4\tsplit_5\tsplit_6\tsplit_7\tsplit_8\tsplit_9',
-         file=self.datafile)
+              file=self.datafile)
 
     def register_seed(self, accuracy_list):
         print(*accuracy_list, sep='\t', file=self.datafile)
@@ -36,10 +36,11 @@ class FileWriter():
     def close_file(self):
         self.datafile.close()
 
+
 def trend_chart(filename, title):
 
     split_0, split_1, split_2, split_3, split_4 = [], [], [], [], []
-    split_5, split_6, split_7, split_8, split_9 = [], [], [], [], []    
+    split_5, split_6, split_7, split_8, split_9 = [], [], [], [], []
 
     with open(filename, 'r') as _file:
         values = csv.reader(_file, delimiter='\t')
@@ -48,20 +49,20 @@ def trend_chart(filename, title):
             if header:
                 header = False
             else:
-               split_0.append(float(row[1])*100)
-               split_1.append(float(row[2])*100)
-               split_2.append(float(row[3])*100)
-               split_3.append(float(row[4])*100)
-               split_4.append(float(row[5])*100)
-               split_5.append(float(row[6])*100)
-               split_6.append(float(row[7])*100)
-               split_7.append(float(row[8])*100)
-               split_8.append(float(row[9])*100)
-               split_9.append(float(row[10])*100)
+                split_0.append(float(row[1])*100)
+                split_1.append(float(row[2])*100)
+                split_2.append(float(row[3])*100)
+                split_3.append(float(row[4])*100)
+                split_4.append(float(row[5])*100)
+                split_5.append(float(row[6])*100)
+                split_6.append(float(row[7])*100)
+                split_7.append(float(row[8])*100)
+                split_8.append(float(row[9])*100)
+                split_9.append(float(row[10])*100)
 
     mean_values = []
     list_of_lists = [split_0, split_1, split_2, split_3,
-    split_4, split_5, split_6, split_7, split_8, split_9]
+                     split_4, split_5, split_6, split_7, split_8, split_9]
 
     for _list in list_of_lists:
         mean_values.append(statistics.mean(_list))
@@ -71,11 +72,10 @@ def trend_chart(filename, title):
     fig = go.Figure(data=go.Scatter(x=x, y=mean_values))
     # Edit the layout
     fig.update_layout(title=title,
-                   xaxis_title='Split',
-                   yaxis_title='Accuracy [%]')
+                      xaxis_title='Split',
+                      yaxis_title='Accuracy [%]',
+                      xaxis=dict(
+                          tickmode='array',
+                          tickvals=x                          
+                      ))
     fig.show()
-
-    
-
-    
-
