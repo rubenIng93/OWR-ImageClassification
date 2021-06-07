@@ -32,11 +32,11 @@ class TrainTester():
         self.running_loss_history = []
         self.running_corrects_history = []
         self.accuracy_per_split = []
-        self.criterion
-        self.train_dataloader
-        self.test_dataloader
-        self.optimizer
-        self.scheduler 
+        self.criterion = None
+        self.train_dataloader = None
+        self.test_dataloader = None
+        self.optimizer = None
+        self.scheduler = None
 
         # Optimization of cuda resources
         cudnn.benchmark
