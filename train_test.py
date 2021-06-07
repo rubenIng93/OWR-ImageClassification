@@ -1,5 +1,5 @@
 from tqdm import tqdm
-from utils import map_label
+from OWR_Tools.utils import map_label
 
 
 class TrainTester():
