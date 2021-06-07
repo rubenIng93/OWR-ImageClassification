@@ -42,7 +42,7 @@ def trend_chart(filename, title):
     split_5, split_6, split_7, split_8, split_9 = [], [], [], [], []    
 
     with open(filename, 'r') as _file:
-        values = csv.reader(_file, delimiter='/t')
+        values = csv.reader(_file, delimiter='\t')
         header = True
         for row in values:
             if header:
