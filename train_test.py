@@ -128,8 +128,8 @@ class TrainTester():
             # concatenate to the global lists
             #self.all_predictions.extend(preds.tolist())
             #self.all_targets.extend(targets.data.tolist())
-            self.all_targets = np.concatenate(all_targets, targets.cpu().numpy())
-            self.all_predictions = np.concatenate(all_predictions, preds.cpu().numpy())
+            self.all_targets = np.concatenate(all_targets, targets.data.cpu().numpy())
+            self.all_predictions = np.concatenate(all_predictions, preds.data.cpu().numpy())
             # sum the actual scores to the metric
             running_corrects_test += torch.sum(preds == targets)
 
