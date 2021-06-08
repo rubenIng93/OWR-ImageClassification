@@ -126,8 +126,8 @@ class TrainTester():
             # get the predictions
             _, preds = torch.max(outputs, 1)
             # concatenate to the global lists
-            self.all_predictions.extend(preds.tolist())
-            self.all_targets.extend(targets.data.tolist())
+            all_predictions.extend(preds.tolist())
+            all_targets.extend(targets.data.tolist())
             #self.all_targets = np.concatenate(all_targets, targets.cpu().numpy())
             #self.all_predictions = np.concatenate(all_predictions, preds.cpu().numpy())
             # sum the actual scores to the metric
