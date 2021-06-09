@@ -72,7 +72,7 @@ class TrainTester():
                 # map the label in range [0, n_classes - 1]
                 labels = map_label(labels, self.trainset.actual_classes)
                 # transform it in one hot encoding to fit the BCELoss
-                onehot_labels = torch.eye(split*10+10)[labels].to("cuda")
+                onehot_labels = torch.eye(split*10+10)[labels].to("cuda") # dimension [batchsize, classes]
 
                 # set the network to train mode
                 self.net.train()
@@ -147,8 +147,8 @@ class TrainTester():
             self.all_predictions = np.concatenate(
                 all_predictions, preds.cpu().numpy())'''
 
-            self.all_targets = torch.cat((all_targets.cuda(), targets.cuda()), dim=0)
-            self.all_predictions = torch.cat((all_predictions.cuda(), preds.cuda()), dim=0)
+            self.all_targets = torch.cat((self.all_targets.cuda(), targets.cuda()), dim=0)
+            self.all_predictions = torch.cat((self.all_predictions.cuda(), preds.cuda()), dim=0)
             # sum the actual scores to the metric
             running_corrects_test += torch.sum(preds == targets)
 
