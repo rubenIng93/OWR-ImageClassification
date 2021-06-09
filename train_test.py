@@ -190,6 +190,8 @@ class TrainTester():
                 if split == 0:
                     self.testset.change_subclasses(split)
                 else:
+                    # reset the actual classes
+                    self.testset.actual_classes = []
                     # concatenate at each iteration the old split
                     for i in range(0, split):
                         self.testset.concatenate_split(i)
