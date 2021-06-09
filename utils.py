@@ -5,16 +5,23 @@ import plotly.graph_objects as go
 import numpy as np
 
 
-def map_label(labels, actual_classes):
+def map_label(labels, actual_classes, split):
     '''
     Function that maps the label in 
     the range [0, actual_classes-1]:
     '''
-    map = {k: v for v, k in enumerate(actual_classes)}
-    labels = labels.cpu().numpy()
-    for i in range(len(labels)):
-        labels[i] = map[labels[i]]
-    return torch.LongTensor(labels).cuda()  # remove cuda if GPU busy
+    if split != None:
+        map = {k: v for v, k in enumerate(actual_classes)}
+        labels = labels.cpu().numpy()
+        for i in range(len(labels)):
+            labels[i] = map[labels[i]] + 10 * split
+        return torch.LongTensor(labels).cuda()  # remove cuda if GPU busy
+    else:
+        map = {k: v for v, k in enumerate(actual_classes)}
+        labels = labels.cpu().numpy()
+        for i in range(len(labels)):
+            labels[i] = map[labels[i]]
+        return torch.LongTensor(labels).cuda()  # remove cuda if GPU busy
 
 
 class FileWriter():

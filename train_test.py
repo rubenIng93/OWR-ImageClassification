@@ -70,7 +70,7 @@ class TrainTester():
                 inputs = inputs.cuda()
                 labels = labels.cuda()
                 # map the label in range [0, n_classes - 1]
-                labels = map_label(labels, self.trainset.actual_classes)
+                labels = map_label(labels, self.trainset.actual_classes, split)
                 # transform it in one hot encoding to fit the BCELoss
                 onehot_labels = torch.eye(split*10+10)[labels].to("cuda") # dimension [batchsize, classes]
 
