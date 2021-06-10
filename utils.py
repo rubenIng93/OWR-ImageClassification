@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import numpy as np
 
 
-def map_label(labels, actual_classes, split):
+def map_label(labels, actual_classes, split=None):
     '''
     Function that maps the label in 
     the range [0, actual_classes-1]:
