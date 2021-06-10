@@ -11,10 +11,10 @@ def map_label(labels, actual_classes, split):
     the range [0, actual_classes-1]:
     '''
     if split != None:
-        map = {k: v for v, k in enumerate(actual_classes)}
+        map = {k: (v + 10 * split) for v, k in enumerate(actual_classes)}
         labels = labels.cpu().numpy()
         for i in range(len(labels)):
-            labels[i] = map[labels[i]] + 10 * split
+            labels[i] = map[labels[i]] 
         return torch.LongTensor(labels).cuda()  # remove cuda if GPU busy
     else:
         map = {k: v for v, k in enumerate(actual_classes)}

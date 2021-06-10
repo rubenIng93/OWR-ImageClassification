@@ -69,7 +69,7 @@ class TrainTester():
                 # move to GPUs
                 inputs = inputs.cuda()
                 labels = labels.cuda()
-                # map the label in range [0, n_classes - 1]
+                # map the label in range [split * 10, split + 10 * 10]
                 labels = map_label(labels, self.trainset.actual_classes, split)
                 # transform it in one hot encoding to fit the BCELoss
                 onehot_labels = torch.eye(split*10+10)[labels].to("cuda") # dimension [batchsize, classes]
@@ -190,11 +190,8 @@ class TrainTester():
                 if split == 0:
                     self.testset.change_subclasses(split)
                 else:
-                    # reset the actual classes
-                    self.testset.actual_classes = []
-                    # concatenate at each iteration the old split
-                    for i in range(0, split):
-                        self.testset.concatenate_split(i)
+                    # concatenate split
+                    self.testset.concatenate_split(split)
 
                 test_subset = Subset(
                     self.testset, self.testset.get_imgs_by_target())

@@ -73,7 +73,7 @@ class Cifar100Dataset(Dataset):
         It takes as input the current iteration -> i
         '''
         self.actual_classes = np.concatenate(
-            (self.subClasses[i+1], self.actual_classes)
+            (self.actual_classes, self.subClasses[i])
         )
 
     def change_subclasses(self, split):
