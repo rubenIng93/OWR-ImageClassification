@@ -24,6 +24,7 @@ class Cifar100Dataset(Dataset):
         # of 10 classes (k=split, v=[random_classes])
         self.subClasses = {}
         self.actual_classes = [] 
+        self.map = {}
         
         # if the split is train perform data augmentation
         # otherwise don't
@@ -63,7 +64,8 @@ class Cifar100Dataset(Dataset):
         # the classes are already shuffled
         for i in range(10):
             self.subClasses[i] = classes[i*10:i*10+10]
-        
+
+        self.map = {k: v for v, k in enumerate(classes)}
         
 
     
@@ -121,7 +123,4 @@ class Cifar100Dataset(Dataset):
         '''
         return len(self.dataset)
         
-
-    
-
 
