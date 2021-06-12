@@ -76,15 +76,16 @@ class TrainTester():
                 #print(labels)
                 labels = map_label_2(self.map, labels)
 
-                if split > 0 and self.mode != 'finetuning':
-                    # perform lwf
-                    labels = self.do_lwf(inputs).cuda()
                 #print(labels)
                 # map the label in range [split * 10, split + 10 * 10]
                 #labels = map_label(labels, self.trainset.actual_classes, split)
                 # transform it in one hot encoding to fit the BCELoss
                 onehot_labels = torch.eye(split*10+10)[labels].to("cuda") # dimension [batchsize, classes]
 
+                if split > 0 and self.mode != 'finetuning':
+                    # perform lwf
+                    labels = self.do_lwf(inputs, onehot_labels, split).cuda()
+                
                 # set the network to train mode
                 self.net.train()                
 
@@ -148,10 +149,7 @@ class TrainTester():
             # get the predictions
             _, preds = torch.max(outputs, 1)
             # concatenate to the global lists
-            '''self.all_targets = np.concatenate(
-                all_targets, targets.cpu().numpy())
-            self.all_predictions = np.concatenate(
-                all_predictions, preds.cpu().numpy())'''
+            
 
             self.all_targets = torch.cat((self.all_targets.cuda(), targets.cuda()), dim=0)
             self.all_predictions = torch.cat((self.all_predictions.cuda(), preds.cuda()), dim=0)
@@ -251,11 +249,13 @@ class TrainTester():
         self.writer.close_file()
 
 
-    def do_lwf(self, inputs):
+    def do_lwf(self, inputs, new_onehot_labels, split):
+        m = nn.Sigmoid()
         # compute the old network's outputs for the new classes
         old_outputs = self.old_net(inputs)
         # apply them the sigmoid function
-        old_outputs = nn.Sigmoid(old_outputs)
+        old_outputs = m(old_outputs).cuda()
         # substitute the true labels with the outputs of the
         # previous step for the classes in the previous split
+        new_onehot_labels[:, 0:split*10] = old_outputs
         return old_outputs
