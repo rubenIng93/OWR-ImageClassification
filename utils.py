@@ -3,6 +3,29 @@ import csv
 import statistics
 import plotly.graph_objects as go
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+
+def plotConfusionMatrix(method, confusionMatrixData):
+    fig,ax=plt.subplots(figsize=(10,10))
+    sns.heatmap(confusionMatrixData,cmap='terrain',ax=ax)
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    plt.title("Confusion Matrix {}".format(method))
+
+    filename = "cm_{}.jpg".format(method) # ex. cm_lwf_30
+    plt.savefig(filename, format='png', dpi=300)
+    plt.show()
+
+
+
+def map_label_2(map_f, labels):
+
+    mapped_labels = list(map(lambda lb: map_f[lb], labels.cpu().numpy()))
+    # back in tensor and cuda
+    return torch.LongTensor(mapped_labels).cuda()
+
 
 
 def map_label(labels, actual_classes, split=None):
