@@ -75,6 +75,10 @@ class TrainTester():
                 inputs = inputs.cuda()
                 #print(labels)
                 labels = map_label_2(self.map, labels)
+
+                if split > 0 and self.mode != 'finetuning':
+                    # perform lwf
+                    labels = self.do_lwf(inputs).cuda()
                 #print(labels)
                 # map the label in range [split * 10, split + 10 * 10]
                 #labels = map_label(labels, self.trainset.actual_classes, split)
@@ -82,21 +86,14 @@ class TrainTester():
                 onehot_labels = torch.eye(split*10+10)[labels].to("cuda") # dimension [batchsize, classes]
 
                 # set the network to train mode
-                self.net.train()
+                self.net.train()                
+
                 # get the score
                 outputs = self.net(inputs)
                 # compute the loss
                 loss = self.criterion(outputs, onehot_labels)
                 # reset the gradients
-                self.optimizer.zero_grad()
-
-                if split > 0 and self.mode != 'finetuning':
-                    # pass through the old net
-                    dist_outputs = self.old_net(inputs)
-                    # compute the loss for old net
-                    old_loss = self.criterion(dist_outputs, onehot_labels)
-                    # combine the 2 losses
-                    loss += old_loss
+                self.optimizer.zero_grad()          
 
                 # propagate the derivatives
                 loss.backward()
@@ -168,12 +165,12 @@ class TrainTester():
         self.accuracy_per_split.append(accuracy.cpu().numpy())
         # display the accuracy
         print(f'Test Accuracy for classes {0} to {split*10+10}: {accuracy}\n')
-        '''
+        
         confusionMatrixData = confusion_matrix(
             self.all_targets.cpu().numpy(),
             self.all_predictions.cpu().numpy()
         )
-        plotConfusionMatrix("Finetuning", confusionMatrixData)'''
+        plotConfusionMatrix("Finetuning", confusionMatrixData)
 
     def run_loop(self):
 
@@ -252,3 +249,13 @@ class TrainTester():
 
         # close the file writer
         self.writer.close_file()
+
+
+    def do_lwf(self, inputs):
+        # compute the old network's outputs for the new classes
+        old_outputs = self.old_net(inputs)
+        # apply them the sigmoid function
+        old_outputs = nn.Sigmoid(old_outputs)
+        # substitute the true labels with the outputs of the
+        # previous step for the classes in the previous split
+        return old_outputs
