@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.utils.data import Subset, DataLoader
 import torch.optim as optim
 import copy
-#from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix
 
 
 
