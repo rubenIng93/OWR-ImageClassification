@@ -143,6 +143,23 @@ class ResNet(nn.Module):
 
         return x
 
+    def extract_features(self, x):
+        '''
+        Feature extractor for icarl
+        excluding the fc layer
+        '''
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+
+        return x
 
 
 def resnet32(pretrained=False, **kwargs):
