@@ -86,6 +86,19 @@ class Cifar100Dataset(Dataset):
         self.actual_classes = self.subClasses[split]
 
     
+    def get_imgs_by_chosing_target(self, y):
+        '''
+        Function that receives a class label y and
+        returns all idxs of the images associated
+        '''
+
+        idx = []
+        for img_idx, targ in enumerate(self.dataset.targets):
+            if targ == y:
+                idx.append(img_idx)
+
+        return idx
+    
     
     def get_imgs_by_target(self):
         '''
