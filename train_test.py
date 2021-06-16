@@ -293,7 +293,7 @@ class TrainTester():
             m = int(self.K / so_far_classes)
             # apply the paper algorithm
             for i in range(m):
-                x = classes_means[mapped_label] - (cl_mean + features [mapped_label]) / i+1
+                x = classes_means[mapped_label] - (cl_mean + features [mapped_label]) / (i+1)
                 #print(x.shape)
                 x = np.linalg.norm(x, axis=1)
                 #print(x.shape)
