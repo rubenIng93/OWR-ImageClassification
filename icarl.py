@@ -120,7 +120,7 @@ class iCaRLTrainer():
                 means[label] = mean
 
         # assing the class to the inputs
-        norms = torch.tensor([])
+        norms = torch.empty_like #doesn't work, use numpy instead
         for k in means.keys(): # are these labels ordered ?
             mean_k = means[k].cuda()
             torch.stack(
