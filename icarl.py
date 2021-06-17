@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch.utils.data import Subset, DataLoader
 import torch.optim as optim
 import copy
+import pandas as pd
 from sklearn.metrics import confusion_matrix
 
 
@@ -100,10 +101,11 @@ class iCaRLTrainer():
 
                 self.optimizer.step()
                 # get the predictions
+                '''
                 _, preds = torch.max(outputs, 1)
                 '''
                 preds = self.classify(self.net, inputs)
-                '''
+
                 # sum to the metrics the actual scores
                 running_loss += loss.item()
                 running_corrects += torch.sum(preds == labels.data)
@@ -130,8 +132,8 @@ class iCaRLTrainer():
         # nearest means class classifier
         for label in self.exemplars_set.keys():
             #label = self.trainset.map[label]
-            loader = DataLoader(
-                self.exemplars_set[label], batch_size=self.batch_size)
+            loader = DataLoader(self.exemplars_set[label], batch_size=len(
+                self.exemplars_set[label]))
             for img, target in loader:  # a single batch
                 img = img.cuda()
                 target = target.cuda()  # real targets, not mapped
@@ -142,13 +144,20 @@ class iCaRLTrainer():
                 means[label] = mean.detach().cpu().numpy()
 
         # assing the class to the inputs
-        norms = np.array([])
+        norms = []
         for k in means.keys():  # are these labels ordered ?
             mean_k = means[k]
             features = net.extract_features(inputs).detach().cpu().numpy()
             norm = np.linalg.norm((features - mean_k), axis=1)
-            norms = np.concatenate((norms, norm))
-        return torch.tensor(np.argmin(norms)).cuda()
+            norms.append(norm)
+
+        df = pd.DataFrame(norms)
+        result = []
+        for img in df.columns:
+            result.append(float(np.argmin(df[img])))
+
+        result = torch.tensor(result)
+        return result.cuda()
 
     def run_loop(self):
 
@@ -335,13 +344,13 @@ class iCaRLTrainer():
             targets = map_label_2(self.map, targets)
             # print(targets)
             # get the predictions
-            '''
+
             preds = self.classify(self.net, images)
             '''
             outputs = self.net(images)
             # get the predictions
-            _, preds = torch.max(outputs, 1)
-
+            _, preds = torch.max(outputs, 1)            
+            '''
             self.all_targets = torch.cat(
                 (self.all_targets.cuda(), targets.cuda()), dim=0)
             self.all_predictions = torch.cat(
