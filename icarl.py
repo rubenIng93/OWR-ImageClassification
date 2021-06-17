@@ -57,7 +57,6 @@ class iCaRLTrainer():
         # Optimization of cuda resources
         cudnn.benchmark
 
-
     def train(self, split):
 
         self.map = self.trainset.map
@@ -78,12 +77,14 @@ class iCaRLTrainer():
                 # map the label in range [split * 10, split + 10 * 10]
                 # labels = map_label(labels, self.trainset.actual_classes, split)
                 # transform it in one hot encoding to fit the BCELoss
-                onehot_labels = torch.eye(split*10+10)[labels].to("cuda") # dimension [batchsize, classes]
+                # dimension [batchsize, classes]
+                onehot_labels = torch.eye(split*10+10)[labels].to("cuda")
 
                 if split > 0:
-                  # use the exemplars coming from the previous step
-                  onehot_labels = self.distillation(inputs, onehot_labels, split).cuda()
-                
+                    # use the exemplars coming from the previous step
+                    onehot_labels = self.distillation(
+                        inputs, onehot_labels, split).cuda()
+
                 # set the network to train mode
                 self.net.train()
 
@@ -92,14 +93,17 @@ class iCaRLTrainer():
                 # compute the loss
                 loss = self.criterion(outputs, onehot_labels)
                 # reset the gradients
-                self.optimizer.zero_grad()          
+                self.optimizer.zero_grad()
 
                 # propagate the derivatives
                 loss.backward()
 
                 self.optimizer.step()
                 # get the predictions
+                _, preds = torch.max(outputs, 1)
+                '''
                 preds = self.classify(self.net, inputs)
+                '''
                 # sum to the metrics the actual scores
                 running_loss += loss.item()
                 running_corrects += torch.sum(preds == labels.data)
@@ -111,41 +115,40 @@ class iCaRLTrainer():
             self.running_corrects_history.append(epoch_acc)
 
             # display every 5 epochs
-            if (e+1) % 5 == 0:
+            if True:
                 print('epoch: {}/{}, LR={}'
                       .format(e+1, self.epochs, self.scheduler.get_last_lr()))
                 print('training loss: {:.4f},  training accuracy {:.4f} %'
                       .format(epoch_loss, epoch_acc*100))
 
             # let the scheduler goes to the next epoch
-            self.scheduler.step()                    
-    
-        
+            self.scheduler.step()
+
     def classify(self, net, inputs):
 
-        means = {} # the keys are the mapped labels
+        means = {}  # the keys are the mapped labels
         # nearest means class classifier
-        for label in self.exemplar_set.keys(): 
+        for label in self.exemplars_set.keys():
             #label = self.trainset.map[label]
-            loader = DataLoader(self.exemplar_set[label], batch_size=len(self.exemplar_set[label]))
-            for img, target in loader: # a single batch
+            loader = DataLoader(
+                self.exemplars_set[label], batch_size=self.batch_size)
+            for img, target in loader:  # a single batch
                 img = img.cuda()
-                target = target.cuda() # real targets, not mapped
+                target = target.cuda()  # real targets, not mapped
                 net = net.cuda()
                 features = net.extract_features(img)
-                mean = torch.mean(features, 0) # this is the mean of all images in the same class exemplars
+                # this is the mean of all images in the same class exemplars
+                mean = torch.mean(features, 0)
                 means[label] = mean.detach().cpu().numpy()
 
         # assing the class to the inputs
         norms = np.array([])
-        for k in means.keys(): # are these labels ordered ?
+        for k in means.keys():  # are these labels ordered ?
             mean_k = means[k]
             features = net.extract_features(inputs).detach().cpu().numpy()
-            norm = np.linalg.norm((features - mean_k), axis=1)      
-            np.concatenate((norms, norm))
-        
+            norm = np.linalg.norm((features - mean_k), axis=1)
+            norms = np.concatenate((norms, norm))
         return torch.tensor(np.argmin(norms)).cuda()
-
 
     def run_loop(self):
 
@@ -166,21 +169,20 @@ class iCaRLTrainer():
                 # defining the proper set of classes for training
                 self.trainset.change_subclasses(split)  # update the subclasses
                 train_subset = Subset(
-                    self.trainset, self.trainset.get_imgs_by_target())              
-
+                    self.trainset, self.trainset.get_imgs_by_target())
                 # update representation adding the exemplars
                 temp = []
-                if not bool(self.exemplars_set):
+                if bool(self.exemplars_set):
                     # if there is something in the exemplar set
-                    for _class in self.exemplars_set.values():
-                        temp.extend(_class)
+                    for l in self.exemplars_set.values():
+                        temp.extend(l)
 
                 # extend the dataset with the exemplars
                 updated_train_subset = train_subset + temp
                 # prepare the dataloader
-                self.train_dataloader = DataLoader(updated_train_subset, 
-                                                batch_size=self.batch_size,
-                                                shuffle=True, num_workers=2)
+                self.train_dataloader = DataLoader(updated_train_subset,
+                                                   batch_size=self.batch_size,
+                                                   shuffle=True, num_workers=2)
 
                 # testset preparation
                 if split == 0:
@@ -191,12 +193,13 @@ class iCaRLTrainer():
 
                 test_subset = Subset(
                     self.testset, self.testset.get_imgs_by_target())
-                
+
                 self.test_dataloader = DataLoader(test_subset, batch_size=self.batch_size,
                                                   shuffle=True, num_workers=2)
 
                 # start the training procedure
-                print(5*"*"+f" Training the for classes {split*10} : {split*10+10} " + 5*"*"+"\n")
+                print(
+                    5*"*"+f" Training the for classes {split*10} : {split*10+10} " + 5*"*"+"\n")
 
                 if split > 0:
                     # save the old trained network in case of lwf or icarl
@@ -213,6 +216,8 @@ class iCaRLTrainer():
                     # keep the old weights
                     self.net.fc.weight.data[:split*10] = weight
                     self.net.cuda()
+                    # reduce the exemplars set
+                    self.reduce_exemplar_set(split)
 
                 parameters_to_optimize = self.net.parameters()
                 self.optimizer = optim.SGD(parameters_to_optimize, lr=2,
@@ -229,15 +234,12 @@ class iCaRLTrainer():
                 self.train(split)
                 # test
                 self.test(split)
-                # reduce the exemplars set
-                self.reduce_exemplar_set(split + 1)
 
             # register the seed's results
             self.writer.register_seed(self.accuracy_per_split)
 
         # close the file writer
         self.writer.close_file()
-
 
     def distillation(self, inputs, new_onehot_labels, split):
         m = nn.Sigmoid()
@@ -248,15 +250,14 @@ class iCaRLTrainer():
         # substitute the true labels with the outputs of the
         # previous step for the classes in the previous split
         new_onehot_labels[:, 0:split*10] = old_outputs
-        return new_onehot_labels  
-    
-    
+        return new_onehot_labels
+
     def build_exemplars_set(self, trainset, split):
 
         # initialize the data structures
         classes_means = {}
         features = {}
-        exemplars = {}
+        #exemplars = {}
 
         for act_class in trainset.actual_classes:
 
@@ -273,7 +274,7 @@ class iCaRLTrainer():
                 img = img.cuda()
                 img = self.net.extract_features(img)
                 features[mapped_label] = img.detach().cpu().numpy()
-                mean = torch.mean(img, 0) # mean by column
+                mean = torch.mean(img, 0)  # mean by column
                 classes_means[mapped_label] = mean.detach().cpu().numpy()
 
             exemplar = []
@@ -282,20 +283,20 @@ class iCaRLTrainer():
             m = int(self.K / so_far_classes)
             # apply the paper algorithm
             for i in range(m):
-                x = classes_means[mapped_label] - (cl_mean + features [mapped_label]) / (i+1)
-                #print(x.shape)
+                x = classes_means[mapped_label] - \
+                    (cl_mean + features[mapped_label]) / (i+1)
+                # print(x.shape)
                 x = np.linalg.norm(x, axis=1)
-                #print(x.shape)
+                # print(x.shape)
                 index = np.argmin(x)
-                #print(index)
+                # print(index)
                 cl_mean += features[mapped_label][index]
                 # take the best as image, not features
-                exemplar.append(loader.dataset[index]) 
-            
-            exemplars[mapped_label] = exemplar
+                exemplar.append(loader.dataset[index])
 
-        self.exemplars_set = exemplars
+            self.exemplars_set[mapped_label] = exemplar
 
+        #self.exemplars_set = exemplars
 
     def reduce_exemplar_set(self, split):
         '''
@@ -307,9 +308,9 @@ class iCaRLTrainer():
         new_m = self.K / (split * 10 + 10)
 
         to_remove = int(current_m - new_m)
-    
-        for _class in self.exemplars_set.keys():
-            self.exemplars_set[_class] = self.exemplars_set[_class][:-to_remove]
+
+        for k in self.exemplars_set.keys():
+            self.exemplars_set[k] = self.exemplars_set[k][:-to_remove]
 
     def test(self, split):
 
@@ -330,16 +331,21 @@ class iCaRLTrainer():
             images = images.cuda()
             targets = targets.cuda()
             # map the label in range [0, n_classes - 1]
-            #print(targets)
+            # print(targets)
             targets = map_label_2(self.map, targets)
-            #print(targets)
+            # print(targets)
             # get the predictions
+            '''
             preds = self.classify(self.net, images)
-            # concatenate to the global lists
-            
+            '''
+            outputs = self.net(images)
+            # get the predictions
+            _, preds = torch.max(outputs, 1)
 
-            self.all_targets = torch.cat((self.all_targets.cuda(), targets.cuda()), dim=0)
-            self.all_predictions = torch.cat((self.all_predictions.cuda(), preds.cuda()), dim=0)
+            self.all_targets = torch.cat(
+                (self.all_targets.cuda(), targets.cuda()), dim=0)
+            self.all_predictions = torch.cat(
+                (self.all_predictions.cuda(), preds.cuda()), dim=0)
             # sum the actual scores to the metric
             running_corrects_test += torch.sum(preds == targets)
 
@@ -350,7 +356,7 @@ class iCaRLTrainer():
         self.accuracy_per_split.append(accuracy.cpu().numpy())
         # display the accuracy
         print(f'Test Accuracy for classes {0} to {split*10+10}: {accuracy}\n')
-        
+
         confusionMatrixData = confusion_matrix(
             self.all_targets.cpu().numpy(),
             self.all_predictions.cpu().numpy()
