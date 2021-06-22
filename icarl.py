@@ -54,6 +54,7 @@ class iCaRLTrainer():
         self.all_targets = torch.tensor([])
         self.all_predictions = torch.tensor([])
         self.old_net = ""
+        self.current_ex_means = []
 
         # Optimization of cuda resources
         cudnn.benchmark
@@ -101,11 +102,11 @@ class iCaRLTrainer():
 
                 self.optimizer.step()
                 # get the predictions
-                '''
+                
                 _, preds = torch.max(outputs, 1)
                 '''
                 preds = self.classify(self.net, inputs)
-
+                '''
                 # sum to the metrics the actual scores
                 running_loss += loss.item()
                 running_corrects += torch.sum(preds == labels.data)
@@ -128,36 +129,33 @@ class iCaRLTrainer():
 
     def classify(self, net, inputs):
 
-        means = {}  # the keys are the mapped labels
+        means = {} # the keys are the mapped labels
         # nearest means class classifier
-        for label in self.exemplars_set.keys():
-            #label = self.trainset.map[label]
-            loader = DataLoader(self.exemplars_set[label], batch_size=len(
-                self.exemplars_set[label]))
-            for img, target in loader:  # a single batch
+        for label in self.exemplars_set.keys(): 
+            loader = DataLoader(self.exemplars_set[label], batch_size=len(self.exemplars_set[label])
+                                )
+            for img, target in loader: # a single batch
                 img = img.cuda()
-                target = target.cuda()  # real targets, not mapped
                 net = net.cuda()
                 features = net.extract_features(img)
-                # this is the mean of all images in the same class exemplars
-                mean = torch.mean(features, 0)
-                means[label] = mean.detach().cpu().numpy()
+                features = features / features.norm()
+                mean = torch.mean(features, 0) # this is the mean of all images in the same class exemplars
+                means[label] = mean
 
         # assing the class to the inputs
         norms = []
-        for k in means.keys():  # are these labels ordered ?
+        features = net.extract_features(inputs)
+        for k in means.keys(): 
             mean_k = means[k]
-            features = net.extract_features(inputs).detach().cpu().numpy()
-            norm = np.linalg.norm((features - mean_k), axis=1)
+            mean_k = mean_k/mean_k.norm()            
+            norm = torch.norm((features - mean_k), dim=1)
+            #print(f"Norm shape: {norm.shape}")
             norms.append(norm)
+        
+        norms = torch.stack(norms)
+        preds = torch.argmin(norms, dim=0)
 
-        df = pd.DataFrame(norms)
-        result = []
-        for img in df.columns:
-            result.append(float(np.argmin(df[img])))
-
-        result = torch.tensor(result)
-        return result.cuda()
+        return preds.cuda()
 
     def run_loop(self):
 
