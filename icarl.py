@@ -134,13 +134,14 @@ class iCaRLTrainer():
         for label in self.exemplars_set.keys(): 
             loader = DataLoader(self.exemplars_set[label], batch_size=len(self.exemplars_set[label])
                                 )
-            for img, target in loader: # a single batch
-                img = img.cuda()
-                net = net.cuda()
-                features = net.extract_features(img)
-                features = features / features.norm()
-                mean = torch.mean(features, 0) # this is the mean of all images in the same class exemplars
-                means[label] = mean
+            with torch.no_grad():
+                for img, _ in loader: # a single batch
+                    img = img.cuda()
+                    net = net.cuda()
+                    features = net.extract_features(img)
+                    features = features / features.norm()
+                    mean = torch.mean(features, 0) # this is the mean of all images in the same class exemplars
+                    means[label] = mean
 
         # assing the class to the inputs
         norms = []
@@ -280,6 +281,7 @@ class iCaRLTrainer():
             for img, _ in loader:
                 img = img.cuda()
                 img = self.net.extract_features(img)
+                img = img / torch.norm(img)
                 features[mapped_label] = img.detach().cpu().numpy()
                 mean = torch.mean(img, 0)  # mean by column
                 classes_means[mapped_label] = mean.detach().cpu().numpy()
