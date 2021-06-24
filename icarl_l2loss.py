@@ -259,7 +259,7 @@ class iCaRLTrainer():
         l2loss = nn.MSELoss()
 
         l2_loss = l2loss(features, old_features)
-        l2_loss.backward()
+        #l2_loss.backward()
 
         return l2_loss
 
