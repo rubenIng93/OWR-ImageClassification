@@ -254,7 +254,7 @@ class iCaRLTrainer():
 
     def l2(self, inputs):
         features = self.net.extract_features(inputs)
-        old_features = self.old_net(inputs)
+        old_features = self.old_net.extract_features(inputs)
 
         l2loss = nn.MSELoss()
 
