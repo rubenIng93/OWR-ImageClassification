@@ -370,7 +370,10 @@ class iCaRLTrainer():
         current_m = self.K / (split * 10)
         new_m = self.K / (split * 10 + 10)
 
-        to_remove = int(current_m - new_m)
+        if (self.K % (split * 10 + 10)) != 0:
+            to_remove = int(current_m - new_m) +1
+        else:
+            to_remove = int(current_m - new_m)
 
         for k in self.exemplars_set.keys():
             self.exemplars_set[k] = self.exemplars_set[k][:-to_remove]
