@@ -14,7 +14,7 @@ from sklearn import svm
 import pandas as pd
 
 
-class iCaRLTrainer():
+class CSEnvironment():
 
     def __init__(self, seeds, file_writer, trainset, testset,
                  epochs, net, splits, b_size, classifier):
