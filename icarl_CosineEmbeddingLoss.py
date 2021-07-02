@@ -85,7 +85,8 @@ class iCaRLTrainer():
 
                 cosineL = 0
                 if split > 0:
-                    cosineL = self.cosine(inputs)
+                    lam = 5 * (((10*split)/10)** 0.5)
+                    cosineL = self.cosine(inputs,lam)
                     # use the exemplars coming from the previous step
                     #onehot_labels = self.distillation(
                         #inputs, onehot_labels, split).cuda()
@@ -252,18 +253,12 @@ class iCaRLTrainer():
         # close the file writer
         self.writer.close_file()
 
-    def cosine(self, inputs):
+    def cosine(self, inputs,lmbd):
         features = self.net.extract_features(inputs)
         old_features = self.old_net.extract_features(inputs)
-        cosineLoss = nn.CosineEmbeddingLoss()
-            
-        #l2loss = nn.MSELoss()
-
-        cosine_loss = cosineLoss(features, old_features,\
-                    torch.ones(inputs.shape[0]).cuda())
-        #l2_loss.backward()
-
-        return cosine_loss
+        cosineLoss = nn.CosineEmbeddingLoss()(features, old_features, \
+									                          torch.ones(inputs.shape[0]).cuda()) * lmbd
+        return cosineLoss
 
     def distillation(self, inputs, new_onehot_labels, split):
         m = nn.Sigmoid()
