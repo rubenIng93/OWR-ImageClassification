@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 import math
 import torch.utils.model_zoo as model_zoo
 
@@ -6,6 +7,16 @@ def conv3x3(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
+
+
+class SVMLayer(nn.Module):
+    def __init__(self, num_classes):
+        super(SVMLayer, self).__init__()
+        self.weight = nn.Parameter(nn.init.normal_(torch.empty(64,num_classes)))
+        self.bias = nn.Parameter(nn.init.constant_(torch.empty(num_classes), 0.1))
+    
+    def forward(self, x):
+        return torch.matmul(x, self.weight) + self.bias
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -91,9 +102,8 @@ class ResNet(nn.Module):
         self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 64, layers[2], stride=2)
         self.avgpool = nn.AvgPool2d(8, stride=1)
-        self.svm_weight = torch.normal(0, 0.1, size=(64,num_classes))
-        self.svm_bias = torch.empty(num_classes)._fill(0.1)
-
+        self.svm = SVMLayer(num_classes) 
+       
 
         #self.fc = nn.Linear(64 * block.expansion, num_classes)
 
@@ -132,9 +142,8 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
-        x = torch.matmul(x, self.svm_weight) + self.svm_bias
-        #x = self.fc(x)
-
+        
+        x = self.svm(x)
         return x
 
     def extract_features(self, x):

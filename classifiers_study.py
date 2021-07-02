@@ -1,6 +1,8 @@
 from tqdm import tqdm
 from OWR_Tools.utils import *
+from OWR_Tools.svm_resnet import resnet32 as svm_rn32
 from OWR_Tools.resnet import resnet32 as rn32
+from OWR_Tools.svm_resnet import SVMLayer
 import numpy as np
 from torch.backends import cudnn
 import torch
@@ -12,6 +14,7 @@ import pandas as pd
 from sklearn.metrics import confusion_matrix
 from sklearn import svm
 import pandas as pd
+
 
 
 class CSEnvironment():
@@ -108,9 +111,7 @@ class CSEnvironment():
                 # get the predictions
                 
                 _, preds = torch.max(outputs, 1)
-                '''
-                preds = self.classify(self.net, inputs)
-                '''
+                
                 # sum to the metrics the actual scores
                 running_loss += loss.item()
                 running_corrects += torch.sum(preds == labels.data)
@@ -168,50 +169,6 @@ class CSEnvironment():
 
         return preds.cuda()
 
-    def SVM_classify(self, net, inputs):
-
-        features_T = []
-
-        for label in self.exemplars_set.keys():
-          loader = DataLoader(self.exemplars_set[label], batch_size=len(self.exemplars_set[label]))
-          with torch.no_grad():
-                for img, _ in loader: # a single batch
-                    img = img.cuda()
-                    net = self.net.cuda()
-                    features = net.extract_features(img)
-                    features = features / features.norm()
-                    features_T.append(features)
-                    
-        features_T = torch.stack(features_T)
-        np_features = features_T.cpu().numpy()
-
-        big_array = []
-        labels = []
-
-        for label in range(np_features.shape[0]):
-          for idx in range(np_features.shape[1]):
-            big_array.append(np_features[label,idx,:])
-            labels.append(label)        
-        
-        #lab_enc = preprocessing.LabelEncoder()
-        #encoded = lab_enc.fit_transform(labels)
-        df = pd.DataFrame(data=big_array)
-        df['label'] = labels
-
-        clf = svm.SVC()
-        clf.fit(df.iloc[:, 0:64], df['label']) # train the svm
-
-        # process the inputs
-        in_features = net.extract_features(inputs) 
-        in_features = in_features/in_features.norm()
-        in_features = in_features.detach().cpu().numpy()
-        # shape (128, 64)
-        #print(in_features.shape)
-        
-        preds = clf.predict(in_features)
-
-        return torch.tensor(preds).cuda()
-
     def run_loop(self):
 
         for seed in self.seeds:
@@ -222,7 +179,10 @@ class CSEnvironment():
             # initialize the accuracies array
             self.accuracy_per_split.append(seed)
             # reset the net
-            self.net = rn32().cuda()
+            if classifier == 'SVM':
+                self.net = svm_rn32().cuda()
+            else:
+                self.net = rn32().cuda()
             self.criterion = nn.BCEWithLogitsLoss()
 
             # the 10 iterations for finetuning, 10 classes each
@@ -271,13 +231,23 @@ class CSEnvironment():
                     # set up the resnet with the proper number of outputs neurons in
                     # the final fully connected layer
                     out_neurons = split*10+10  # new number of output classes
-                    in_features = self.net.fc.in_features  # n. of in features in the fc
-                    weight = self.net.fc.weight.data  # current weights in the fc
-                    # new fc with proper n. of classes
-                    self.net.fc = nn.Linear(in_features, out_neurons)
-                    # keep the old weights
-                    self.net.fc.weight.data[:split*10] = weight
-                    self.net.cuda()
+                    if self.classifier == 'SVM':
+                        weight = self.net.svm.weight
+                        bias = self.net.svm.bias
+                        # redefine the svm layer
+                        self.net.svm = SVMLayer(out_neurons)
+                        self.net.svm.weight.data[:, :split*10] = weight
+                        self.net.svm.bias.data[:split*10] = bias
+                        self.net.cuda()
+
+                    else:
+                        in_features = self.net.fc.in_features  # n. of in features in the fc
+                        weight = self.net.fc.weight.data  # current weights in the fc
+                        # new fc with proper n. of classes
+                        self.net.fc = nn.Linear(in_features, out_neurons)
+                        # keep the old weights
+                        self.net.fc.weight.data[:split*10] = weight
+                        self.net.cuda()
                     # reduce the exemplars set
                     self.reduce_exemplar_set(split)
 
@@ -402,12 +372,12 @@ class CSEnvironment():
             # print(targets)
             # get the predictions
 
-            if self.classifier == 'FC':
+            if self.classifier == 'FC' or self.classifier == 'SVM':
                 outputs = self.net(images)
                 _, preds = torch.max(outputs, 1)
             
-            elif self.classifier == 'SVM':
-                preds = self.SVM_classify(self.net, images)
+            #elif self.classifier == 'SVM':
+                #preds = self.SVM_classify(self.net, images)
             
             elif self.classifier == 'NME':            
                 preds = self.NME_classify(self.net, images)
