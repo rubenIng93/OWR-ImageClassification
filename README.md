@@ -1,6 +1,22 @@
 # OWR-ImageClassification
 Open World Recognition in Image Classification project for Machine Learning and Deep Learning course's assignment - PoliTO
 
+### Paper baseline implementation
+* Finetuning
+* Learning without forgetting (usage of distillation loss)
+* iCarl (distillation + exemplars)
+
+### Ablation studies:
+* Classifiers
+    - Nearest Mean Exemplars (iCaRL standard) **baseline**
+    - Fully connected layer 
+    - Support Vector Machine
+
+* Losses
+    - loss a **baseline**
+    - loss b
+    - loss c
+
 
 ### Dataset usage - example
 
