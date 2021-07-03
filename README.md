@@ -6,6 +6,8 @@ Open World Recognition in Image Classification project for Machine Learning and 
 * Learning without forgetting (usage of distillation loss)
 * iCarl (distillation + exemplars)
 
+![Screenshot](plots/comparison.png)
+
 ### Ablation studies:
 * Classifiers
     - Nearest Mean Exemplars (iCaRL standard) **baseline**
