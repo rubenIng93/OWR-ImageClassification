@@ -179,7 +179,7 @@ class CSEnvironment():
             # initialize the accuracies array
             self.accuracy_per_split.append(seed)
             # reset the net
-            if classifier == 'SVM':
+            if self.classifier == 'SVM':
                 self.net = svm_rn32().cuda()
             else:
                 self.net = rn32().cuda()
@@ -252,10 +252,10 @@ class CSEnvironment():
                     self.reduce_exemplar_set(split)
 
                 parameters_to_optimize = self.net.parameters()
-                self.optimizer = optim.SGD(parameters_to_optimize, lr=2,
+                self.optimizer = optim.Adam(parameters_to_optimize, lr=0.01,
                                            momentum=0.9, weight_decay=0.00001)
                 self.scheduler = optim.lr_scheduler.MultiStepLR(
-                    self.optimizer, [49, 63], gamma=0.2)
+                    self.optimizer, [20, 49, 63], gamma=0.2)
 
                 self.running_loss_history = []
                 self.running_corrects_history = []
