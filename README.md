@@ -14,6 +14,9 @@ Open World Recognition in Image Classification project for Machine Learning and 
     - Fully connected layer 
     - Support Vector Machine
 
+![Screenshot](plots/classifiers_study_v2.png)
+***MUST BE UPDATED***
+
 * Losses
     - loss a **baseline**
     - loss b
