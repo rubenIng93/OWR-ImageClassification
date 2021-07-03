@@ -167,6 +167,9 @@ class iCaRLTrainer():
             # define the splits according to the seed
             self.trainset.define_splits(seed)
             self.testset.define_splits(seed)
+            # setting the seed
+            np.random.seed(seed)
+            torch.manual_seed(seed)
 
             # initialize the accuracies array
             self.accuracy_per_split.append(seed)
