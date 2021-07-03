@@ -82,7 +82,7 @@ class iCaRLTrainer():
                 # dimension [batchsize, classes]
 
                 onehot_labels = torch.eye(split*10+10)[labels].to("cuda")
-
+                lam = 0
                 cosineL = 0
                 if split > 0:
                     lam = 5 * (((10*split)/10)** 0.5)
@@ -171,7 +171,6 @@ class iCaRLTrainer():
             # setting the seed
             np.random.seed(seed)
             torch.manual_seed(seed)
-
             # initialize the accuracies array
             self.accuracy_per_split.append(seed)
             # reset the net
@@ -235,10 +234,10 @@ class iCaRLTrainer():
                     self.reduce_exemplar_set(split)
 
                 parameters_to_optimize = self.net.parameters()
-                self.optimizer = optim.SGD(parameters_to_optimize, lr=2,
-                                           momentum=0.9, weight_decay=0.00001)
+                self.optimizer = optim.Adam(parameters_to_optimize, lr=0.01,
+                                           weight_decay=0.00001)
                 self.scheduler = optim.lr_scheduler.MultiStepLR(
-                    self.optimizer, [49, 63], gamma=0.2)
+                    self.optimizer, [20,49, 63], gamma=0.2)
 
                 self.running_loss_history = []
                 self.running_corrects_history = []
