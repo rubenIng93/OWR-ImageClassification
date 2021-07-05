@@ -237,7 +237,7 @@ class iCaRLTrainer():
                 self.optimizer = optim.Adam(parameters_to_optimize, lr=0.01,
                                            weight_decay=0.00001)
                 self.scheduler = optim.lr_scheduler.MultiStepLR(
-                    self.optimizer, [20,49, 63], gamma=0.2)
+                    self.optimizer, [35,49,60], gamma=0.2)
 
                 self.running_loss_history = []
                 self.running_corrects_history = []
