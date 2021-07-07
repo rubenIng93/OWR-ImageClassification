@@ -86,7 +86,7 @@ class iCaRLTrainer():
                 cosineL = 0
                 if split > 0:
                     #constant * sqrt ( new/old classes)
-                    lam = 5 * ((10/(10*split))** 0.5)
+                    lam = 5 * np.sqrt(10/(10*split))
                     cosineL = self.cosine(inputs,lam)
                     # use the exemplars coming from the previous step
                     #onehot_labels = self.distillation(
