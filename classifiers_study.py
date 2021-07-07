@@ -139,9 +139,10 @@ class CSEnvironment():
             # reset the net
             if self.classifier == 'combo':
                 self.net = cos_rn32().cuda()
-            else:
+                self.criterion = nn.CrossEntropyLoss()
+            else:            
                 self.net = rn32().cuda()
-            self.criterion = nn.BCEWithLogitsLoss()
+                self.criterion = nn.BCEWithLogitsLoss()
 
             # the 10 iterations for finetuning, 10 classes each
             for split in range(0, self.splits):
@@ -278,8 +279,7 @@ class CSEnvironment():
                 gt_index = gt_index.scatter(1, labels.view(-1, 1), 1).ge(0.5)
                 gt_scores = outputs.masked_select(gt_index)
                 # get top-K scores on novel classes
-                max_novel_scores = outputs[:, num_old_classes:].topk(K, dim=1)[
-                    0]
+                max_novel_scores = outputs[:, num_old_classes:].topk(K, dim=1)[0]
 
                 if split > 0:
 
@@ -299,8 +299,11 @@ class CSEnvironment():
                                                                    max_novel_scores.view(-1, 1), torch.ones(num_old_classes*K).cuda())
 
                 # compute the loss
-                loss = self.criterion(
-                    outputs, onehot_labels) + cosineL + marginL
+                if self.classifier == 'combo':
+                    loss = self.criterion(outputs, labels) + cosineL + marginL
+                else:
+                    loss = self.criterion(outputs, onehot_labels)
+               
                 # reset the gradients
                 self.optimizer.zero_grad()
 
