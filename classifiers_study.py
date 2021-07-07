@@ -108,12 +108,8 @@ class CSEnvironment():
                 loss.backward()
 
                 self.optimizer.step()
-                # get the predictions
-                
-                if self.classifier == 'KNN':
-                    preds = self.knn.predict(inputs)
-                else:
-                    _, preds = torch.max(outputs, 1)
+                # get the predictions                
+                _, preds = torch.max(outputs, 1)
                 
                 # sum to the metrics the actual scores
                 running_loss += loss.item()
@@ -169,9 +165,22 @@ class CSEnvironment():
         
         norms = torch.stack(norms)
         preds = torch.argmin(norms, dim=0)
+        print(preds.shape)
 
         return preds.cuda()
 
+    
+    def KNN_classify(self, net, inputs):
+
+        with torch.no_grad():
+            features = net.extract_features(inputs)
+            features = features / features.norm()
+            preds = self.knn.predict(features.cpu().numpy())
+            print(np.unique(preds))
+            # back in tensor
+            preds = torch.Tensor(preds).cuda()
+            
+        return preds
     
     def train_KNN(self, k):
 
@@ -182,25 +191,24 @@ class CSEnvironment():
         print('Train KNN')
         exemplars = []
         for label in self.exemplars_set.keys():
-            exemplars.append(self.exemplars_set[label])
-        print(f'\nWorking with {len(exemplars)} exemplars\n')
-        torch_ex = torch.stack(exemplars)
+            exemplars.extend(self.exemplars_set[label])
 
-        loader = DataLoader(torch_ex, batch_size=self.batch_size)
-        knn = KNeighborsClassifier(k)
-
-       
+        loader = DataLoader(exemplars, batch_size=self.batch_size)
+        self.knn = KNeighborsClassifier(k)
+        # requires the mapping
         with torch.no_grad():
             features = []
             labels = []
-            for images, labels in loader:
+            for images, lbs in loader:
+                images = images.cuda()
+                lbs = map_label_2(self.map, lbs)
                 ext_features = self.net.extract_features(images)
+                ext_features = ext_features/ext_features.norm()
                 features.append(ext_features)
-                labels.append(labels)
-            
+                labels.append(lbs)
             torch_features = torch.cat(features)
             torch_labels = torch.cat(labels)
-            self.knn.fit(torch_features, torch_labels)        
+            self.knn.fit(torch_features.cpu().numpy(), torch_labels.cpu().numpy()) 
 
     def run_loop(self):
 
@@ -266,7 +274,7 @@ class CSEnvironment():
                     # the final fully connected layer
                     out_neurons = split*10+10  # new number of output classes                        
 
-                    if self.classifier == 'NME' or self.classifier == 'FC':
+                    if True:
                         in_features = self.net.fc.in_features  # n. of in features in the fc
                         weight = self.net.fc.weight.data  # current weights in the fc
                         # new fc with proper n. of classes
@@ -288,11 +296,11 @@ class CSEnvironment():
 
                 # update representation
                 self.build_exemplars_set(self.trainset, split)
-                # train the knn if it's the choice
-                if self.classifier == 'KNN':
-                    self.train_KNN(50)
                 # train
                 self.train(split)
+                # train the knn on exemplars if it's the choice
+                if self.classifier == 'KNN':
+                    self.train_KNN(50)
                 # test
                 self.test(split)
 
@@ -410,7 +418,7 @@ class CSEnvironment():
                 _, preds = torch.max(outputs, 1)
 
             if self.classifier == 'KNN':
-                preds = self.knn.predict(images)
+                preds = self.KNN_classify(self.net, images)
             
             elif self.classifier == 'NME':            
                 preds = self.NME_classify(self.net, images)
@@ -421,7 +429,6 @@ class CSEnvironment():
                 (self.all_predictions.cuda(), preds.cuda()), dim=0)
             # sum the actual scores to the metric
             running_corrects_test += torch.sum(preds == targets)
-
         # calculate the accuracy
         accuracy = running_corrects_test / \
             float(len(self.test_dataloader.dataset))
