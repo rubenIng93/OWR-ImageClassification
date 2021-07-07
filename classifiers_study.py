@@ -165,7 +165,6 @@ class CSEnvironment():
         
         norms = torch.stack(norms)
         preds = torch.argmin(norms, dim=0)
-        print(preds.shape)
 
         return preds.cuda()
 
@@ -176,7 +175,6 @@ class CSEnvironment():
             features = net.extract_features(inputs)
             features = features / features.norm()
             preds = self.knn.predict(features.cpu().numpy())
-            print(np.unique(preds))
             # back in tensor
             preds = torch.Tensor(preds).cuda()
             
@@ -300,7 +298,7 @@ class CSEnvironment():
                 self.train(split)
                 # train the knn on exemplars if it's the choice
                 if self.classifier == 'KNN':
-                    self.train_KNN(50)
+                    self.train_KNN(1500)
                 # test
                 self.test(split)
 
