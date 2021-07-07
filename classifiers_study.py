@@ -14,7 +14,7 @@ import pandas as pd
 from sklearn.metrics import confusion_matrix
 from sklearn import svm
 import pandas as pd
-
+from sklearn.neighbors import KNeighborsClassifier
 
 
 class CSEnvironment():
@@ -110,7 +110,10 @@ class CSEnvironment():
                 self.optimizer.step()
                 # get the predictions
                 
-                _, preds = torch.max(outputs, 1)
+                if self.classifier == 'KNN':
+                    preds = self.knn.predict(inputs)
+                else:
+                    _, preds = torch.max(outputs, 1)
                 
                 # sum to the metrics the actual scores
                 running_loss += loss.item()
@@ -169,6 +172,36 @@ class CSEnvironment():
 
         return preds.cuda()
 
+    
+    def train_KNN(self, k):
+
+        '''
+        k: the number of nearest neighbors
+        '''
+
+        print('Train KNN')
+        exemplars = []
+        for label in self.exemplars_set.keys():
+            exemplars.append(self.exemplars_set[label])
+        print(f'\nWorking with {len(exemplars)} exemplars\n')
+        torch_ex = torch.stack(exemplars)
+
+        loader = DataLoader(torch_ex, batch_size=self.batch_size)
+        knn = KNeighborsClassifier(k)
+
+       
+        with torch.no_grad():
+            features = []
+            labels = []
+            for images, labels in loader:
+                ext_features = self.net.extract_features(images)
+                features.append(ext_features)
+                labels.append(labels)
+            
+            torch_features = torch.cat(features)
+            torch_labels = torch.cat(labels)
+            self.knn.fit(torch_features, torch_labels)        
+
     def run_loop(self):
 
         for seed in self.seeds:
@@ -182,10 +215,8 @@ class CSEnvironment():
             # initialize the accuracies array
             self.accuracy_per_split.append(seed)
             # reset the net
-            if self.classifier == 'SVM':
-                self.net = svm_rn32().cuda()
-            else:
-                self.net = rn32().cuda()
+            
+            self.net = rn32().cuda()
             self.criterion = nn.BCEWithLogitsLoss()
 
             # the 10 iterations for finetuning, 10 classes each
@@ -233,17 +264,9 @@ class CSEnvironment():
                     self.old_net.cuda()
                     # set up the resnet with the proper number of outputs neurons in
                     # the final fully connected layer
-                    out_neurons = split*10+10  # new number of output classes
-                    if self.classifier == 'SVM':
-                        weight = self.net.svm.weight
-                        bias = self.net.svm.bias
-                        # redefine the svm layer
-                        self.net.svm = SVMLayer(out_neurons)
-                        self.net.svm.weight.data[:, :split*10] = weight
-                        self.net.svm.bias.data[:split*10] = bias
-                        self.net.cuda()
+                    out_neurons = split*10+10  # new number of output classes                        
 
-                    else:
+                    if self.classifier == 'NME' or self.classifier == 'FC':
                         in_features = self.net.fc.in_features  # n. of in features in the fc
                         weight = self.net.fc.weight.data  # current weights in the fc
                         # new fc with proper n. of classes
@@ -255,16 +278,19 @@ class CSEnvironment():
                     self.reduce_exemplar_set(split)
 
                 parameters_to_optimize = self.net.parameters()
-                self.optimizer = optim.Adam(parameters_to_optimize, lr=0.001,
-                                           momentum=0.9, weight_decay=0.00001)
+                self.optimizer = optim.Adam(parameters_to_optimize, lr=0.01,
+                                            weight_decay=0.00001)
                 self.scheduler = optim.lr_scheduler.MultiStepLR(
-                    self.optimizer, [49, 63], gamma=0.1)
+                    self.optimizer, [49, 63], gamma=0.05)
 
                 self.running_loss_history = []
                 self.running_corrects_history = []
 
                 # update representation
                 self.build_exemplars_set(self.trainset, split)
+                # train the knn if it's the choice
+                if self.classifier == 'KNN':
+                    self.train_KNN(50)
                 # train
                 self.train(split)
                 # test
@@ -288,6 +314,8 @@ class CSEnvironment():
         return new_onehot_labels
 
     def build_exemplars_set(self, trainset, split):
+
+        print(f'Building exemplars split {split}')
 
         # initialize the data structures
         classes_means = {}
@@ -353,6 +381,8 @@ class CSEnvironment():
 
     def test(self, split):
 
+        print(f'Test split {split}')
+
         # save prediction and targets to get the conf matrix
         all_targets = torch.tensor([])
         self.all_targets = all_targets.type(torch.LongTensor)
@@ -375,12 +405,12 @@ class CSEnvironment():
             # print(targets)
             # get the predictions
 
-            if self.classifier == 'FC' or self.classifier == 'SVM':
+            if self.classifier == 'FC':
                 outputs = self.net(images)
                 _, preds = torch.max(outputs, 1)
-            
-            #elif self.classifier == 'SVM':
-                #preds = self.SVM_classify(self.net, images)
+
+            if self.classifier == 'KNN':
+                preds = self.knn.predict(images)
             
             elif self.classifier == 'NME':            
                 preds = self.NME_classify(self.net, images)

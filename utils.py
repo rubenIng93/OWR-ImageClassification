@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 def plotConfusionMatrix(method, confusionMatrixData):
     fig,ax=plt.subplots(figsize=(10,10))
-    sns.heatmap(confusionMatrixData,cmap='terrain',ax=ax)
+    sns.heatmap(confusionMatrixData,cmap='seismic',ax=ax)
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
     plt.title("Confusion Matrix {}".format(method))
