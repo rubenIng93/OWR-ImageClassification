@@ -12,7 +12,8 @@ Open World Recognition in Image Classification project for Machine Learning and 
 * Classifiers
     - Nearest Mean Exemplars (iCaRL standard) **baseline**
     - Fully connected layer 
-    - Support Vector Machine
+    - KNN
+    - Cosine Layer + losses as detailed in @Learning a Unified Classifier Incrementally via Rebalancing by Hue *et all* 
 
 ![Screenshot](plots/classifiers_study_v2.png)
 ***MUST BE UPDATED***
