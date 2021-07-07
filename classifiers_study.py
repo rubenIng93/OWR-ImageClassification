@@ -1,8 +1,7 @@
 from tqdm import tqdm
 from OWR_Tools.utils import *
-from OWR_Tools.svm_resnet import resnet32 as svm_rn32
+from OWR_Tools.cosine_resnet import resnet32 as cos_rn32, CosineLinear
 from OWR_Tools.resnet import resnet32 as rn32
-from OWR_Tools.svm_resnet import SVMLayer
 import numpy as np
 from torch.backends import cudnn
 import torch
@@ -12,7 +11,6 @@ import torch.optim as optim
 import copy
 import pandas as pd
 from sklearn.metrics import confusion_matrix
-from sklearn import svm
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
 
@@ -33,7 +31,16 @@ class CSEnvironment():
         - scheduler: the training scheduler
         - b_size: the size of batches
         - mode: 'finetuning', 'lwf' or 'icarl'
-        - classifier: choose SVM, FC or NME
+        - classifier: choose FC, NME, KNN or combo
+            the last one follows the implementation details as:
+                @InProceedings{Hou_2019_CVPR,
+                author = {Hou, Saihui and Pan, Xinyu and Loy, Chen Change and Wang, Zilei and Lin, Dahua},
+                title = {Learning a Unified Classifier Incrementally via Rebalancing},
+                booktitle = {The IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+                month = {June},
+                year = {2019}
+                }
+
         '''
 
         self.seeds = seeds
@@ -66,109 +73,42 @@ class CSEnvironment():
         # Optimization of cuda resources
         cudnn.benchmark
 
-    def train(self, split):
-
-        self.map = self.trainset.map
-
-        for e in range(self.epochs):
-
-            # initialize the epoch's metrics
-            running_loss = 0.0
-            running_corrects = 0.0
-
-            # iterate over the batches
-            for inputs, labels in self.train_dataloader:
-
-                # move to GPUs
-                inputs = inputs.cuda()
-                # print(labels)
-                labels = map_label_2(self.map, labels)
-                # map the label in range [split * 10, split + 10 * 10]
-                # labels = map_label(labels, self.trainset.actual_classes, split)
-                # transform it in one hot encoding to fit the BCELoss
-                # dimension [batchsize, classes]
-                onehot_labels = torch.eye(split*10+10)[labels].to("cuda")
-
-                if split > 0:
-                    # use the exemplars coming from the previous step
-                    onehot_labels = self.distillation(
-                        inputs, onehot_labels, split).cuda()
-
-                # set the network to train mode
-                self.net.train()
-
-                # get the score
-                outputs = self.net(inputs)
-                # compute the loss
-                loss = self.criterion(outputs, onehot_labels)
-                # reset the gradients
-                self.optimizer.zero_grad()
-
-                # propagate the derivatives
-                loss.backward()
-
-                self.optimizer.step()
-                # get the predictions                
-                _, preds = torch.max(outputs, 1)
-                
-                # sum to the metrics the actual scores
-                running_loss += loss.item()
-                running_corrects += torch.sum(preds == labels.data)
-
-            # compute the epoch's accuracy and loss
-            epoch_loss = running_loss/len(self.train_dataloader.dataset)
-            epoch_acc = running_corrects.float()/len(self.train_dataloader.dataset)
-            self.running_loss_history.append(epoch_loss)
-            self.running_corrects_history.append(epoch_acc)
-
-            # display every 5 epochs
-            if (e+1)%5 == 0:
-                print('epoch: {}/{}, LR={}'
-                      .format(e+1, self.epochs, self.scheduler.get_last_lr()))
-                print('training loss: {:.4f},  training accuracy {:.4f} %'
-                      .format(epoch_loss, epoch_acc*100))
-
-            # let the scheduler goes to the next epoch
-            self.scheduler.step()
-
-    
-    
     '''
     Classifiers
-    ''' 
-    
+    '''
+
     def NME_classify(self, net, inputs):
 
-        means = {} # the keys are the mapped labels
+        means = {}  # the keys are the mapped labels
         # nearest means class classifier
-        for label in self.exemplars_set.keys(): 
+        for label in self.exemplars_set.keys():
             loader = DataLoader(self.exemplars_set[label], batch_size=len(self.exemplars_set[label])
                                 )
             with torch.no_grad():
-                for img, _ in loader: # a single batch
+                for img, _ in loader:  # a single batch
                     img = img.cuda()
                     net = net.cuda()
                     features = net.extract_features(img)
                     features = features / features.norm()
-                    mean = torch.mean(features, 0) # this is the mean of all images in the same class exemplars
+                    # this is the mean of all images in the same class exemplars
+                    mean = torch.mean(features, 0)
                     means[label] = mean
 
         # assing the class to the inputs
         norms = []
         features = net.extract_features(inputs)
-        for k in means.keys(): 
+        for k in means.keys():
             mean_k = means[k]
-            mean_k = mean_k/mean_k.norm()            
+            mean_k = mean_k/mean_k.norm()
             norm = torch.norm((features - mean_k), dim=1)
             #print(f"Norm shape: {norm.shape}")
             norms.append(norm)
-        
+
         norms = torch.stack(norms)
         preds = torch.argmin(norms, dim=0)
 
         return preds.cuda()
 
-    
     def KNN_classify(self, net, inputs):
 
         with torch.no_grad():
@@ -177,36 +117,12 @@ class CSEnvironment():
             preds = self.knn.predict(features.cpu().numpy())
             # back in tensor
             preds = torch.Tensor(preds).cuda()
-            
+
         return preds
-    
-    def train_KNN(self, k):
 
-        '''
-        k: the number of nearest neighbors
-        '''
-
-        print('Train KNN')
-        exemplars = []
-        for label in self.exemplars_set.keys():
-            exemplars.extend(self.exemplars_set[label])
-
-        loader = DataLoader(exemplars, batch_size=self.batch_size)
-        self.knn = KNeighborsClassifier(k)
-        # requires the mapping
-        with torch.no_grad():
-            features = []
-            labels = []
-            for images, lbs in loader:
-                images = images.cuda()
-                lbs = map_label_2(self.map, lbs)
-                ext_features = self.net.extract_features(images)
-                ext_features = ext_features/ext_features.norm()
-                features.append(ext_features)
-                labels.append(lbs)
-            torch_features = torch.cat(features)
-            torch_labels = torch.cat(labels)
-            self.knn.fit(torch_features.cpu().numpy(), torch_labels.cpu().numpy()) 
+    '''
+    MAIN LOOP
+    '''
 
     def run_loop(self):
 
@@ -221,8 +137,10 @@ class CSEnvironment():
             # initialize the accuracies array
             self.accuracy_per_split.append(seed)
             # reset the net
-            
-            self.net = rn32().cuda()
+            if self.classifier == 'combo':
+                self.net = cos_rn32().cuda()
+            else:
+                self.net = rn32().cuda()
             self.criterion = nn.BCEWithLogitsLoss()
 
             # the 10 iterations for finetuning, 10 classes each
@@ -270,9 +188,9 @@ class CSEnvironment():
                     self.old_net.cuda()
                     # set up the resnet with the proper number of outputs neurons in
                     # the final fully connected layer
-                    out_neurons = split*10+10  # new number of output classes                        
+                    out_neurons = split*10+10  # new number of output classes
 
-                    if True:
+                    if self.classifier != 'combo':
                         in_features = self.net.fc.in_features  # n. of in features in the fc
                         weight = self.net.fc.weight.data  # current weights in the fc
                         # new fc with proper n. of classes
@@ -280,6 +198,16 @@ class CSEnvironment():
                         # keep the old weights
                         self.net.fc.weight.data[:split*10] = weight
                         self.net.cuda()
+                    else:
+                        in_features = self.net.cosine.in_features  # n. of in features in the fc
+                        weight = self.net.cosine.weight.data  # current weights in the fc
+                        # new fc with proper n. of classes
+                        self.net.cosine = CosineLinear(
+                            in_features, out_neurons)
+                        # keep the old weights
+                        self.net.cosine.weight.data[:split*10] = weight
+                        self.net.cuda()
+
                     # reduce the exemplars set
                     self.reduce_exemplar_set(split)
 
@@ -308,16 +236,192 @@ class CSEnvironment():
         # close the file writer
         self.writer.close_file()
 
-    def distillation(self, inputs, new_onehot_labels, split):
-        m = nn.Sigmoid()
-        # compute the old network's outputs for the new classes
-        old_outputs = self.old_net(inputs)
-        # apply them the sigmoid function
-        old_outputs = m(old_outputs).cuda()
-        # substitute the true labels with the outputs of the
-        # previous step for the classes in the previous split
-        new_onehot_labels[:, 0:split*10] = old_outputs
-        return new_onehot_labels
+    '''
+    TRAIN
+    '''
+
+    def train(self, split):
+
+        self.map = self.trainset.map
+
+        for e in range(self.epochs):
+
+            # initialize the epoch's metrics
+            running_loss = 0.0
+            running_corrects = 0.0
+
+            # iterate over the batches
+            for inputs, labels in self.train_dataloader:
+
+                # move to GPUs
+                inputs = inputs.cuda()
+                # print(labels)
+                labels = map_label_2(self.map, labels)
+                # map the label in range [split * 10, split + 10 * 10]
+                # labels = map_label(labels, self.trainset.actual_classes, split)
+                # transform it in one hot encoding to fit the BCELoss
+                # dimension [batchsize, classes]
+                onehot_labels = torch.eye(split*10+10)[labels].to("cuda")
+
+                cosineL = 0
+                marginL = 0
+                num_old_classes = 10*split
+                K = 2
+
+                # set the network to train mode
+                self.net.train()
+
+                # get the score
+                outputs = self.net(inputs)
+
+                gt_index = torch.zeros(outputs.size()).cuda()
+                gt_index = gt_index.scatter(1, labels.view(-1, 1), 1).ge(0.5)
+                gt_scores = outputs.masked_select(gt_index)
+                # get top-K scores on novel classes
+                max_novel_scores = outputs[:, num_old_classes:].topk(K, dim=1)[
+                    0]
+
+                if split > 0:
+
+                    if self.classifier != 'combo':
+                        # use the exemplars coming from the previous step
+                        onehot_labels = self.distillation(
+                            inputs, onehot_labels, split).cuda()
+                    else:
+                        # cosine distillation
+                        lam = 5 * np.sqrt(10/(num_old_classes))
+                        cosineL = self.cosine(inputs, lam)
+                        # margin loss
+                        old_idx = labels.lt(num_old_classes)
+                        gt_scores = gt_scores[old_idx].view(-1, 1).repeat(1, K)
+                        max_novel_scores = max_novel_scores[old_idx]
+                        marginL = nn.MarginRankingLoss(margin=0.5)(gt_scores.view(-1, 1),
+                                                                   max_novel_scores.view(-1, 1), torch.ones(num_old_classes*K).cuda())
+
+                # compute the loss
+                loss = self.criterion(
+                    outputs, onehot_labels) + cosineL + marginL
+                # reset the gradients
+                self.optimizer.zero_grad()
+
+                # propagate the derivatives
+                loss.backward()
+
+                self.optimizer.step()
+                # get the predictions
+                _, preds = torch.max(outputs, 1)
+
+                # sum to the metrics the actual scores
+                running_loss += loss.item()
+                running_corrects += torch.sum(preds == labels.data)
+
+            # compute the epoch's accuracy and loss
+            epoch_loss = running_loss/len(self.train_dataloader.dataset)
+            epoch_acc = running_corrects.float()/len(self.train_dataloader.dataset)
+            self.running_loss_history.append(epoch_loss)
+            self.running_corrects_history.append(epoch_acc)
+
+            # display every 5 epochs
+            if (e+1) % 5 == 0:
+                print('epoch: {}/{}, LR={}'
+                      .format(e+1, self.epochs, self.scheduler.get_last_lr()))
+                print('training loss: {:.4f},  training accuracy {:.4f} %'
+                      .format(epoch_loss, epoch_acc*100))
+
+            # let the scheduler goes to the next epoch
+            self.scheduler.step()
+
+    def train_KNN(self, k):
+        '''
+        k: the number of nearest neighbors
+        '''
+
+        print('Train KNN')
+        exemplars = []
+        for label in self.exemplars_set.keys():
+            exemplars.extend(self.exemplars_set[label])
+
+        loader = DataLoader(exemplars, batch_size=self.batch_size)
+        self.knn = KNeighborsClassifier(k)
+        # requires the mapping
+        with torch.no_grad():
+            features = []
+            labels = []
+            for images, lbs in loader:
+                images = images.cuda()
+                lbs = map_label_2(self.map, lbs)
+                ext_features = self.net.extract_features(images)
+                ext_features = ext_features/ext_features.norm()
+                features.append(ext_features)
+                labels.append(lbs)
+            torch_features = torch.cat(features)
+            torch_labels = torch.cat(labels)
+            self.knn.fit(torch_features.cpu().numpy(),
+                         torch_labels.cpu().numpy())
+
+    '''
+    TEST
+    '''
+
+    def test(self, split):
+
+        print(f'Test split {split}')
+
+        # save prediction and targets to get the conf matrix
+        all_targets = torch.tensor([])
+        self.all_targets = all_targets.type(torch.LongTensor)
+        all_predictions = torch.tensor([])
+        self.all_predictions = all_predictions.type(torch.LongTensor)
+
+        # set the network to test mode
+        self.net.train(False)
+        # initialize the metric for test
+        running_corrects_test = 0
+
+        # iterate over the test dataloader
+        for images, targets in tqdm(self.test_dataloader):
+            # move to GPUs
+            images = images.cuda()
+            targets = targets.cuda()
+            # map the label in range [0, n_classes - 1]
+            # print(targets)
+            targets = map_label_2(self.map, targets)
+            # print(targets)
+            # get the predictions
+
+            if self.classifier == 'FC' or self.classifier == 'combo':
+                outputs = self.net(images)
+                _, preds = torch.max(outputs, 1)
+
+            if self.classifier == 'KNN':
+                preds = self.KNN_classify(self.net, images)
+
+            elif self.classifier == 'NME':
+                preds = self.NME_classify(self.net, images)
+
+            self.all_targets = torch.cat(
+                (self.all_targets.cuda(), targets.cuda()), dim=0)
+            self.all_predictions = torch.cat(
+                (self.all_predictions.cuda(), preds.cuda()), dim=0)
+            # sum the actual scores to the metric
+            running_corrects_test += torch.sum(preds == targets)
+        # calculate the accuracy
+        accuracy = running_corrects_test / \
+            float(len(self.test_dataloader.dataset))
+        # update the global metric
+        self.accuracy_per_split.append(accuracy.cpu().numpy())
+        # display the accuracy
+        print(f'Test Accuracy for classes {0} to {split*10+10}: {accuracy}\n')
+
+        confusionMatrixData = confusion_matrix(
+            self.all_targets.cpu().numpy(),
+            self.all_predictions.cpu().numpy()
+        )
+        plotConfusionMatrix("Finetuning", confusionMatrixData)
+
+    '''
+    EXEMPLARS MANAGEMENT
+    '''
 
     def build_exemplars_set(self, trainset, split):
 
@@ -378,65 +482,32 @@ class CSEnvironment():
         new_m = self.K / (split * 10 + 10)
 
         if (self.K % (split * 10 + 10)) != 0:
-            to_remove = int(current_m - new_m) +1
+            to_remove = int(current_m - new_m) + 1
         else:
             to_remove = int(current_m - new_m)
 
         for k in self.exemplars_set.keys():
             self.exemplars_set[k] = self.exemplars_set[k][:-to_remove]
 
-    def test(self, split):
+    '''
+    DISTILLATIONS
+    '''
 
-        print(f'Test split {split}')
+    def distillation(self, inputs, new_onehot_labels, split):
+        m = nn.Sigmoid()
+        # compute the old network's outputs for the new classes
+        old_outputs = self.old_net(inputs)
+        # apply them the sigmoid function
+        old_outputs = m(old_outputs).cuda()
+        # substitute the true labels with the outputs of the
+        # previous step for the classes in the previous split
+        new_onehot_labels[:, 0:split*10] = old_outputs
+        return new_onehot_labels
 
-        # save prediction and targets to get the conf matrix
-        all_targets = torch.tensor([])
-        self.all_targets = all_targets.type(torch.LongTensor)
-        all_predictions = torch.tensor([])
-        self.all_predictions = all_predictions.type(torch.LongTensor)
-
-        # set the network to test mode
-        self.net.train(False)
-        # initialize the metric for test
-        running_corrects_test = 0
-
-        # iterate over the test dataloader
-        for images, targets in tqdm(self.test_dataloader):
-            # move to GPUs
-            images = images.cuda()
-            targets = targets.cuda()
-            # map the label in range [0, n_classes - 1]
-            # print(targets)
-            targets = map_label_2(self.map, targets)
-            # print(targets)
-            # get the predictions
-
-            if self.classifier == 'FC':
-                outputs = self.net(images)
-                _, preds = torch.max(outputs, 1)
-
-            if self.classifier == 'KNN':
-                preds = self.KNN_classify(self.net, images)
-            
-            elif self.classifier == 'NME':            
-                preds = self.NME_classify(self.net, images)
-
-            self.all_targets = torch.cat(
-                (self.all_targets.cuda(), targets.cuda()), dim=0)
-            self.all_predictions = torch.cat(
-                (self.all_predictions.cuda(), preds.cuda()), dim=0)
-            # sum the actual scores to the metric
-            running_corrects_test += torch.sum(preds == targets)
-        # calculate the accuracy
-        accuracy = running_corrects_test / \
-            float(len(self.test_dataloader.dataset))
-        # update the global metric
-        self.accuracy_per_split.append(accuracy.cpu().numpy())
-        # display the accuracy
-        print(f'Test Accuracy for classes {0} to {split*10+10}: {accuracy}\n')
-
-        confusionMatrixData = confusion_matrix(
-            self.all_targets.cpu().numpy(),
-            self.all_predictions.cpu().numpy()
-        )
-        plotConfusionMatrix("Finetuning", confusionMatrixData)
+    def cosine(self, inputs, lmbd):
+        features = self.net.extract_features(inputs)
+        old_features = self.old_net.extract_features(inputs)
+        cosineLoss = nn.CosineEmbeddingLoss()(features, old_features,
+                                              torch.ones(inputs.shape[0]).cuda())
+        lg_dis = cosineLoss * lmbd
+        return lg_dis
