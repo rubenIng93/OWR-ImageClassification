@@ -1,6 +1,6 @@
 from tqdm import tqdm
 from OWR_Tools.utils import *
-from OWR_Tools.cosine_resnet import resnet32 as cos_rn32, CosineLinear
+from OWR_Tools.cosine_resnet import resnet32 as cos_rn32, CosineLinear, SplitCosineLinear
 from OWR_Tools.resnet import resnet32 as rn32
 import numpy as np
 from torch.backends import cudnn
@@ -13,6 +13,24 @@ import pandas as pd
 from sklearn.metrics import confusion_matrix
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
+
+
+'''
+functions for combo
+'''
+
+old_scores = []
+new_scores = []
+
+
+def get_old_scores_before_scale(self, inputs, outputs):
+    global old_scores
+    old_scores = outputs
+
+def get_new_scores_before_scale(self, inputs, outputs):
+    global new_scores
+    new_scores = outputs
+
 
 
 class CSEnvironment():
@@ -199,15 +217,28 @@ class CSEnvironment():
                         # keep the old weights
                         self.net.fc.weight.data[:split*10] = weight
                         self.net.cuda()
-                    else:
+
+                    elif self.classifier == 'combo' and split == 1:
                         in_features = self.net.cosine.in_features  # n. of in features in the fc
                         weight = self.net.cosine.weight.data  # current weights in the fc
                         # new fc with proper n. of classes
-                        self.net.cosine = CosineLinear(
-                            in_features, out_neurons)
+                        self.net.cosine = SplitCosineLinear(
+                            in_features, out_neurons, 10)
                         # keep the old weights
-                        self.net.cosine.weight.data[:split*10] = weight
+                        self.net.cosine.fc1.weight.data[:split*10] = weight
+                        self.net.cosine.sigma.data = weight
                         self.net.cuda()
+
+                    elif self.classifier == 'combo' and split > 1:
+                        in_features = self.net.cosine.in_features
+                        out_features1 = self.net.cosine.fc1.out_features
+                        out_features2 = self.net.cosine.fc2.out_features
+                        new_fc = SplitCosineLinear(
+                            in_features, out_features1+out_features2, 10)
+                        new_fc.fc1.weight.data[:out_features1] = self.net.cosine.fc1.weight.data
+                        new_fc.fc1.weight.data[out_features1:] = self.net.cosine.fc2.weight.data
+                        #new_fc.sigma.data = tg_model.fc.sigma.data
+                        self.net.cosine = new_fc
 
                     # reduce the exemplars set
                     self.reduce_exemplar_set(split)
@@ -275,12 +306,6 @@ class CSEnvironment():
                 # get the score
                 outputs = self.net(inputs)
 
-                gt_index = torch.zeros(outputs.size()).cuda()
-                gt_index = gt_index.scatter(1, labels.view(-1, 1), 1).ge(0.5)
-                gt_scores = outputs.masked_select(gt_index)
-                # get top-K scores on novel classes
-                max_novel_scores = outputs[:, num_old_classes:].topk(K, dim=1)[0]
-
                 if split > 0:
 
                     if self.classifier != 'combo':
@@ -288,15 +313,27 @@ class CSEnvironment():
                         onehot_labels = self.distillation(
                             inputs, onehot_labels, split).cuda()
                     else:
+                        # hooks
+                        handle_old_scores_bs = self.net.cosine.fc1.register_forward_hook(get_old_scores_before_scale)
+                        handle_new_scores_bs = self.net.cosine.fc2.register_forward_hook(get_new_scores_before_scale)
+                        # scores before scale
+                        outputs_bs = torch.cat((old_scores, new_scores), dim=1)
+                        assert(outputs_bs.size()==outputs.size())
+                        gt_index = torch.zeros(outputs_bs.size()).cuda()
+                        gt_index = gt_index.scatter(1, labels.view(-1, 1), 1).ge(0.5)
+                        gt_scores = outputs_bs.masked_select(gt_index)
+                        # get top-K scores on novel classes
+                        max_novel_scores = outputs[:, num_old_classes:].topk(K, dim=1)[0]
                         # cosine distillation
                         lam = 5 * np.sqrt(10/(num_old_classes))
                         cosineL = self.cosine(inputs, lam)
                         # margin loss
                         old_idx = labels.lt(num_old_classes)
+                        old_num = torch.nonzero(old_idx).size(0)
                         gt_scores = gt_scores[old_idx].view(-1, 1).repeat(1, K)
                         max_novel_scores = max_novel_scores[old_idx]
                         marginL = nn.MarginRankingLoss(margin=0.5)(gt_scores.view(-1, 1),
-                                                                   max_novel_scores.view(-1, 1), torch.ones(num_old_classes*K).cuda())
+                                                                   max_novel_scores.view(-1, 1), torch.ones(old_num*K).cuda())
 
                 # compute the loss
                 if self.classifier == 'combo':
@@ -333,6 +370,10 @@ class CSEnvironment():
 
             # let the scheduler goes to the next epoch
             self.scheduler.step()
+
+            if split > 0:
+                handle_old_scores_bs.remove()
+                handle_new_scores_bs.remove()
 
     def train_KNN(self, k):
         '''
