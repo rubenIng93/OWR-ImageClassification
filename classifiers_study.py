@@ -200,6 +200,8 @@ class CSEnvironment():
                 print(
                     5*"*"+f" Training the for classes {split*10} : {split*10+10} " + 5*"*"+"\n")
 
+                cur_lamb = 5
+
                 if split > 0:
                     # save the old trained network in case of lwf or icarl
                     self.old_net = copy.deepcopy(self.net)
@@ -220,13 +222,14 @@ class CSEnvironment():
 
                     elif self.classifier == 'combo' and split == 1:
                         in_features = self.net.cosine.in_features  # n. of in features in the fc
+                        out_features = self.net.cosine.out_features # n. out features
                         weight = self.net.cosine.weight.data  # current weights in the fc
                         # new fc with proper n. of classes
                         self.net.cosine = SplitCosineLinear(
-                            in_features, out_neurons, 10)
+                            in_features, out_features, 10)
                         # keep the old weights
-                        self.net.cosine.fc1.weight.data[:split*10] = weight
-                        self.net.cosine.sigma.data = weight
+                        self.net.cosine.fc1.weight.data = weight
+                        #self.net.cosine.sigma.data = weight
                         self.net.cuda()
 
                     elif self.classifier == 'combo' and split > 1:
@@ -239,10 +242,12 @@ class CSEnvironment():
                         new_fc.fc1.weight.data[out_features1:] = self.net.cosine.fc2.weight.data
                         #new_fc.sigma.data = tg_model.fc.sigma.data
                         self.net.cosine = new_fc
+                        self.net.cuda()
 
                     # reduce the exemplars set
                     self.reduce_exemplar_set(split)
 
+                
                 parameters_to_optimize = self.net.parameters()
                 self.optimizer = optim.Adam(parameters_to_optimize, lr=0.01,
                                             weight_decay=0.00001)
@@ -275,6 +280,11 @@ class CSEnvironment():
     def train(self, split):
 
         self.map = self.trainset.map
+
+        if split > 0:
+            # hooks
+            handle_old_scores_bs = self.net.cosine.fc1.register_forward_hook(get_old_scores_before_scale)
+            handle_new_scores_bs = self.net.cosine.fc2.register_forward_hook(get_new_scores_before_scale)
 
         for e in range(self.epochs):
 
@@ -313,11 +323,12 @@ class CSEnvironment():
                         onehot_labels = self.distillation(
                             inputs, onehot_labels, split).cuda()
                     else:
-                        # hooks
-                        handle_old_scores_bs = self.net.cosine.fc1.register_forward_hook(get_old_scores_before_scale)
-                        handle_new_scores_bs = self.net.cosine.fc2.register_forward_hook(get_new_scores_before_scale)
+                        
                         # scores before scale
                         outputs_bs = torch.cat((old_scores, new_scores), dim=1)
+                        #print(self.net.cosine.fc1.in_features, self.net.cosine.fc1.out_features)
+                        #print(self.net.cosine.fc2.in_features, self.net.cosine.fc2.out_features)
+                        #print(old_scores.size(), new_scores.size(), outputs_bs.size(), outputs.size())
                         assert(outputs_bs.size()==outputs.size())
                         gt_index = torch.zeros(outputs_bs.size()).cuda()
                         gt_index = gt_index.scatter(1, labels.view(-1, 1), 1).ge(0.5)
@@ -371,9 +382,9 @@ class CSEnvironment():
             # let the scheduler goes to the next epoch
             self.scheduler.step()
 
-            if split > 0:
-                handle_old_scores_bs.remove()
-                handle_new_scores_bs.remove()
+        if split > 0:
+            handle_old_scores_bs.remove()
+            handle_new_scores_bs.remove()
 
     def train_KNN(self, k):
         '''
