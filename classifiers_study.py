@@ -13,15 +13,23 @@ import pandas as pd
 from sklearn.metrics import confusion_matrix
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
-
+import math
 
 '''
 functions for combo
 '''
-
+cur_features = []
+ref_features = []
 old_scores = []
 new_scores = []
 
+def get_ref_features(self, inputs, outputs):
+    global ref_features
+    ref_features = inputs[0]
+
+def get_cur_features(self, inputs, outputs):
+    global cur_features
+    cur_features = inputs[0]
 
 def get_old_scores_before_scale(self, inputs, outputs):
     global old_scores
@@ -224,30 +232,40 @@ class CSEnvironment():
                         in_features = self.net.cosine.in_features  # n. of in features in the fc
                         out_features = self.net.cosine.out_features # n. out features
                         weight = self.net.cosine.weight.data  # current weights in the fc
+                        sigma = self.net.cosine.sigma.data
                         # new fc with proper n. of classes
                         self.net.cosine = SplitCosineLinear(
                             in_features, out_features, 10)
                         # keep the old weights
                         self.net.cosine.fc1.weight.data = weight
-                        #self.net.cosine.sigma.data = weight
+                        self.net.cosine.sigma.data = sigma
+                        self.lambd = out_features*1.0 / 10
                         self.net.cuda()
 
                     elif self.classifier == 'combo' and split > 1:
                         in_features = self.net.cosine.in_features
                         out_features1 = self.net.cosine.fc1.out_features
                         out_features2 = self.net.cosine.fc2.out_features
+                        sigma = self.net.cosine.sigma.data
+
                         new_fc = SplitCosineLinear(
                             in_features, out_features1+out_features2, 10)
                         new_fc.fc1.weight.data[:out_features1] = self.net.cosine.fc1.weight.data
                         new_fc.fc1.weight.data[out_features1:] = self.net.cosine.fc2.weight.data
-                        #new_fc.sigma.data = tg_model.fc.sigma.data
+                        new_fc.sigma.data = self.net.cosine.sigma.data
                         self.net.cosine = new_fc
+                        self.lambd = (out_features1 + out_features2)*1.0 / 10
                         self.net.cuda()
 
                     # reduce the exemplars set
                     self.reduce_exemplar_set(split)
 
                 
+                if split > 0:
+                    self.lamb = 5 * math.sqrt(self.lambd)
+                else:
+                    self.lamb = 5
+
                 parameters_to_optimize = self.net.parameters()
                 self.optimizer = optim.Adam(parameters_to_optimize, lr=0.01,
                                             weight_decay=0.00001)
@@ -257,11 +275,13 @@ class CSEnvironment():
                 self.running_loss_history = []
                 self.running_corrects_history = []
 
-                # update representation
-                self.build_exemplars_set(self.trainset, split)
                 # train
                 self.train(split)
                 # train the knn on exemplars if it's the choice
+                
+                # update representation
+                self.build_exemplars_set(self.trainset, split)
+
                 if self.classifier == 'KNN':
                     self.train_KNN(1500)
                 # test
@@ -283,6 +303,8 @@ class CSEnvironment():
 
         if split > 0:
             # hooks
+            #handle_ref_features = self.old_net.cosine.register_forward_hook(get_ref_features)
+            #handle_cur_features = self.old_net.cosine.register_forward_hook(get_cur_features)
             handle_old_scores_bs = self.net.cosine.fc1.register_forward_hook(get_old_scores_before_scale)
             handle_new_scores_bs = self.net.cosine.fc2.register_forward_hook(get_new_scores_before_scale)
 
@@ -336,8 +358,10 @@ class CSEnvironment():
                         # get top-K scores on novel classes
                         max_novel_scores = outputs[:, num_old_classes:].topk(K, dim=1)[0]
                         # cosine distillation
-                        lam = 5 * np.sqrt(10/(num_old_classes))
-                        cosineL = self.cosine(inputs, lam)
+                        #cosineL = nn.CosineEmbeddingLoss()(cur_features, ref_features.detach(), \
+                              #torch.ones(inputs.shape[0]).to(device)) * self.lamda
+                        #lam = 5 * np.sqrt(10/(num_old_classes))
+                        cosineL = self.cosine(inputs, self.lambd)
                         # margin loss
                         old_idx = labels.lt(num_old_classes)
                         old_num = torch.nonzero(old_idx).size(0)
@@ -383,6 +407,8 @@ class CSEnvironment():
             self.scheduler.step()
 
         if split > 0:
+            #handle_ref_features.remove()
+            #handle_cur_features.remove()
             handle_old_scores_bs.remove()
             handle_new_scores_bs.remove()
 
