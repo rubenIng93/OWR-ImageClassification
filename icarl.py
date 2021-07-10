@@ -9,6 +9,7 @@ from torch.utils.data import Subset, DataLoader
 import torch.optim as optim
 import copy
 import pandas as pd
+import numpy.ma as ma
 from sklearn.metrics import confusion_matrix
 
 
@@ -300,18 +301,26 @@ class iCaRLTrainer():
                 so_far_classes = split * 10 + 10
                 m = int(self.K / so_far_classes)
                 # apply the paper algorithm
+                indexes = []
+                i = 0
                 for i in range(m):
+                    if i > 0:
+                        cl_mean += features[mapped_label][index]
+                        # take the best as image, not features
                     x = classes_means[mapped_label] - \
                         (cl_mean + features[mapped_label]) / (i+1)
                     # print(x.shape)
                     x = np.linalg.norm(x, axis=1)
+                    # masking for avoiding duplicated
+                    mask = np.zeros(len(x), int)
+                    mask[indexes] = 1
+                    x_masked = ma.masked_array(x, mask=mask)
                     # print(x.shape)
-                    index = np.argmin(x)
-                    # print(index)
-                    cl_mean += features[mapped_label][index]
-                    # take the best as image, not features
+                    index = np.argmin(x_masked)                    
+                    indexes.append(index)                        
                     exemplar.append(loader.dataset[index])
 
+                #print(np.unique(indexes, return_counts=True))
                 self.exemplars_set[mapped_label] = exemplar
 
             #self.exemplars_set = exemplars
