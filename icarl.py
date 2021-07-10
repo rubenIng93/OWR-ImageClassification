@@ -129,7 +129,10 @@ class iCaRLTrainer():
 
     def classify(self, net, inputs):
 
+        self.net.eval()
+
         means = {} # the keys are the mapped labels
+        means_list = []
         # nearest means class classifier
         for label in self.exemplars_set.keys(): 
             loader = DataLoader(self.exemplars_set[label], batch_size=len(self.exemplars_set[label])
@@ -139,22 +142,25 @@ class iCaRLTrainer():
                     img = img.cuda()
                     net = net.cuda()
                     features = net.extract_features(img)
-                    features = features / features.norm()
+                    #features = features / features.norm()
                     mean = torch.mean(features, 0) # this is the mean of all images in the same class exemplars
-                    means[label] = mean
+                    mean = mean / mean.norm()
+                    means_list.append(mean)
+                    #means[label] = mean
 
+        ex_means = torch.stack(means_list)
         # assing the class to the inputs
         norms = []
         features = net.extract_features(inputs)
-        for k in means.keys(): 
-            mean_k = means[k]
-            mean_k = mean_k/mean_k.norm()            
-            norm = torch.norm((features - mean_k), dim=1)
+        for f in features: 
+            #mean_k = means[k]
+            #mean_k = mean_k/mean_k.norm()            
+            norm = torch.norm((ex_means - f), dim=1)
             #print(f"Norm shape: {norm.shape}")
             norms.append(norm)
         
         norms = torch.stack(norms)
-        preds = torch.argmin(norms, dim=0)
+        preds = torch.argmin(norms, dim=1)
 
         return preds.cuda()
 
@@ -236,10 +242,10 @@ class iCaRLTrainer():
                 self.running_loss_history = []
                 self.running_corrects_history = []
 
-                # update representation
-                self.build_exemplars_set(self.trainset, split)
                 # train
                 self.train(split)
+                # update representation
+                self.build_exemplars_set(self.trainset, split)
                 # test
                 self.test(split)
 
@@ -267,45 +273,48 @@ class iCaRLTrainer():
         features = {}
         #exemplars = {}
 
-        for act_class in trainset.actual_classes:
+        self.net.eval()
+        with torch.no_grad():
+            # actual classes are the 10 new classes
+            for act_class in trainset.actual_classes:
 
-            # get all the images belonging to the current label
-            actual_idx = trainset.get_imgs_by_chosing_target(act_class)
-            # build a subset and a dataloader to better manage the images
-            subset = Subset(trainset, actual_idx)
-            loader = DataLoader(subset, batch_size=len(subset))
-            # get the mapped label of the actual class
-            mapped_label = trainset.map[act_class]
+                # get all the images belonging to the current label
+                actual_idx = trainset.get_imgs_by_chosing_target(act_class)
+                # build a subset and a dataloader to better manage the images
+                subset = Subset(trainset, actual_idx)
+                loader = DataLoader(subset, batch_size=len(subset))
+                # get the mapped label of the actual class
+                mapped_label = trainset.map[act_class]
 
-            # extract the features of the images and take the class mean
-            for img, _ in loader:
-                img = img.cuda()
-                img = self.net.extract_features(img)
-                img = img / torch.norm(img)
-                features[mapped_label] = img.detach().cpu().numpy()
-                mean = torch.mean(img, 0)  # mean by column
-                classes_means[mapped_label] = mean.detach().cpu().numpy()
+                # extract the features of the images and take the class mean
+                for img, _ in loader:
+                    img = img.cuda()
+                    img = self.net.extract_features(img)
+                    #img = img / torch.norm(img)
+                    features[mapped_label] = img.cpu().numpy()
+                    mean = torch.mean(img, 0)  # mean by column
+                    classes_means[mapped_label] = mean.cpu().numpy()
 
-            exemplar = []
-            cl_mean = np.zeros((1, 64))
-            so_far_classes = split * 10 + 10
-            m = int(self.K / so_far_classes)
-            # apply the paper algorithm
-            for i in range(m):
-                x = classes_means[mapped_label] - \
-                    (cl_mean + features[mapped_label]) / (i+1)
-                # print(x.shape)
-                x = np.linalg.norm(x, axis=1)
-                # print(x.shape)
-                index = np.argmin(x)
-                # print(index)
-                cl_mean += features[mapped_label][index]
-                # take the best as image, not features
-                exemplar.append(loader.dataset[index])
+                exemplar = []
+                cl_mean = np.zeros((1, 64))
+                so_far_classes = split * 10 + 10
+                m = int(self.K / so_far_classes)
+                # apply the paper algorithm
+                for i in range(m):
+                    x = classes_means[mapped_label] - \
+                        (cl_mean + features[mapped_label]) / (i+1)
+                    # print(x.shape)
+                    x = np.linalg.norm(x, axis=1)
+                    # print(x.shape)
+                    index = np.argmin(x)
+                    # print(index)
+                    cl_mean += features[mapped_label][index]
+                    # take the best as image, not features
+                    exemplar.append(loader.dataset[index])
 
-            self.exemplars_set[mapped_label] = exemplar
+                self.exemplars_set[mapped_label] = exemplar
 
-        #self.exemplars_set = exemplars
+            #self.exemplars_set = exemplars
 
     def reduce_exemplar_set(self, split):
         '''
