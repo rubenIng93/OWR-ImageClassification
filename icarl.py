@@ -119,7 +119,7 @@ class iCaRLTrainer():
             self.running_corrects_history.append(epoch_acc)
 
             # display every 5 epochs
-            if True:
+            if (e+1)%10==0:
                 print('epoch: {}/{}, LR={}'
                       .format(e+1, self.epochs, self.scheduler.get_last_lr()))
                 print('training loss: {:.4f},  training accuracy {:.4f} %'
@@ -190,8 +190,8 @@ class iCaRLTrainer():
                 if bool(self.exemplars_set):
                     # if there is something in the exemplar set
                     for l in self.exemplars_set.values():
-                        temp.extend(l)
-
+                      temp.extend(l)
+                
                 # extend the dataset with the exemplars
                 updated_train_subset = train_subset + temp
                 # prepare the dataloader
@@ -286,6 +286,7 @@ class iCaRLTrainer():
                 loader = DataLoader(subset, batch_size=len(subset))
                 # get the mapped label of the actual class
                 mapped_label = trainset.map[act_class]
+                
 
                 # extract the features of the images and take the class mean
                 for img, _ in loader:
@@ -307,8 +308,7 @@ class iCaRLTrainer():
                     if i > 0:
                         cl_mean += features[mapped_label][index]
                         # take the best as image, not features
-                    x = classes_means[mapped_label] - \
-                        (cl_mean + features[mapped_label]) / (i+1)
+                    x = classes_means[mapped_label] - (cl_mean + features[mapped_label]) / (i+1)
                     # print(x.shape)
                     x = np.linalg.norm(x, axis=1)
                     # masking for avoiding duplicated
@@ -321,6 +321,7 @@ class iCaRLTrainer():
                     exemplar.append(loader.dataset[index])
 
                 #print(np.unique(indexes, return_counts=True))
+                
                 self.exemplars_set[mapped_label] = exemplar
 
             #self.exemplars_set = exemplars
@@ -331,13 +332,11 @@ class iCaRLTrainer():
         computed the outputs and before updating the exemplars set
         '''
         # m is the new target cardinality for each exemplar set
-        current_m = self.K / (split * 10)
-        new_m = self.K / (split * 10 + 10)
-
-        to_remove = int(current_m - new_m)
+        
+        new_m = int(self.K / (split * 10 + 10))
 
         for k in self.exemplars_set.keys():
-            self.exemplars_set[k] = self.exemplars_set[k][:-to_remove]
+          self.exemplars_set[k] = self.exemplars_set[k][:new_m]
 
     def test(self, split):
 
