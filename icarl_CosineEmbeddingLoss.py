@@ -86,7 +86,7 @@ class iCaRLTrainer():
                 cosineL = 0
                 if split > 0:
                     #constant * sqrt ( new/old classes)
-                    lam = 2 * np.sqrt(10/(10*split))
+                    lam = 2 * np.sqrt(10 / ( 10 * split))
                     cosineL = self.cosine(inputs,lam)
                     # use the exemplars coming from the previous step
                     #onehot_labels = self.distillation(
@@ -98,7 +98,7 @@ class iCaRLTrainer():
                 # get the score
                 outputs = self.net(inputs)
                 # compute the loss
-                loss = self.criterion(outputs, onehot_labels) + cosineL
+                loss = self.criterion(outputs, labels) + cosineL
                 # reset the gradients
                 self.optimizer.zero_grad()
 
@@ -176,7 +176,7 @@ class iCaRLTrainer():
             self.accuracy_per_split.append(seed)
             # reset the net
             self.net = rn32().cuda()
-            self.criterion = nn.BCEWithLogitsLoss()
+            self.criterion = nn.CrossEntropyLoss()
             
             # the 10 iterations for finetuning, 10 classes each
             for split in range(0, self.splits):
@@ -243,10 +243,11 @@ class iCaRLTrainer():
                 self.running_loss_history = []
                 self.running_corrects_history = []
 
-                # update representation
-                self.build_exemplars_set(self.trainset, split)
+                
                 # train
                 self.train(split)
+                # update representation
+                self.build_exemplars_set(self.trainset, split)
                 # test
                 self.test(split)
 
@@ -328,12 +329,12 @@ class iCaRLTrainer():
         '''
         # m is the new target cardinality for each exemplar set
         current_m = self.K / (split * 10)
-        new_m = self.K / (split * 10 + 10)
+        new_m = int(self.K / (split * 10 + 10))
 
         to_remove = int(current_m - new_m)
 
         for k in self.exemplars_set.keys():
-            self.exemplars_set[k] = self.exemplars_set[k][:-to_remove]
+            self.exemplars_set[k] = self.exemplars_set[k][:-new_m]
 
     def test(self, split):
 
