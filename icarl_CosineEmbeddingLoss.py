@@ -10,6 +10,8 @@ import torch.optim as optim
 import copy
 import pandas as pd
 from sklearn.metrics import confusion_matrix
+import torch.nn.functional as F
+
 
 
 class iCaRLTrainer():
@@ -97,6 +99,7 @@ class iCaRLTrainer():
 
                 # get the score
                 outputs = self.net(inputs)
+                # normalize the outputs
                 # compute the loss
                 loss = self.criterion(outputs, labels) + cosineL
                 # reset the gradients
@@ -219,6 +222,9 @@ class iCaRLTrainer():
                 if split > 0:
                     # save the old trained network in case of lwf or icarl
                     self.old_net = copy.deepcopy(self.net)
+                    # freeze the old network to speed up the computations
+                    for layer in self.old_net.parameters():
+                        layer.requires_grad = False
                     # move the old net to GPUs
                     self.old_net.cuda()
                     # set up the resnet with the proper number of outputs neurons in
@@ -258,8 +264,11 @@ class iCaRLTrainer():
         self.writer.close_file()
 
     def cosine(self, inputs,lmbd):
+        self.old_net.eval()
         features = self.net.extract_features(inputs)
+        features = F.normalize(features)
         old_features = self.old_net.extract_features(inputs)
+        old_features = F.normalize(old_features)
         cosineLoss = nn.CosineEmbeddingLoss()(features, old_features, \
 									                          torch.ones(inputs.shape[0]).cuda()) * lmbd
         return cosineLoss
@@ -329,12 +338,12 @@ class iCaRLTrainer():
         '''
         # m is the new target cardinality for each exemplar set
         current_m = self.K / (split * 10)
-        new_m = int(self.K / (split * 10 + 10))
+        new_m = self.K / (split * 10 + 10)
 
         to_remove = int(current_m - new_m)
 
         for k in self.exemplars_set.keys():
-            self.exemplars_set[k] = self.exemplars_set[k][:-new_m]
+            self.exemplars_set[k] = self.exemplars_set[k][:-to_remove]
 
     def test(self, split):
 
