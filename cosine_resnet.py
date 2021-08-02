@@ -215,6 +215,24 @@ class ResNet(nn.Module):
 
         return x
 
+    def forward_with_features(self, x):
+        '''
+        returns both features and predictions
+        '''
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        
+        preds = self.cosine(x)
+        return x, preds
+
 
 def resnet32(pretrained=False, **kwargs):
     n = 5

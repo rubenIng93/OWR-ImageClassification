@@ -14,6 +14,8 @@ from sklearn.metrics import confusion_matrix
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
 import math
+import torch.nn.functional as F
+
 
 '''
 functions for combo
@@ -213,6 +215,9 @@ class CSEnvironment():
                 if split > 0:
                     # save the old trained network in case of lwf or icarl
                     self.old_net = copy.deepcopy(self.net)
+                    # freeze the network
+                    for p in self.old_net.parameters():
+                        p.requires_grad = False
                     # move the old net to GPUs
                     self.old_net.cuda()
                     # set up the resnet with the proper number of outputs neurons in
@@ -327,8 +332,8 @@ class CSEnvironment():
                 # dimension [batchsize, classes]
                 onehot_labels = torch.eye(split*10+10)[labels].to("cuda")
 
-                cosineL = 0
-                marginL = 0
+                cosineL = torch.zeros(1).cuda()
+                marginL = torch.zeros(1).cuda()
                 num_old_classes = 10*split
                 K = 2
 
@@ -336,7 +341,7 @@ class CSEnvironment():
                 self.net.train()
 
                 # get the score
-                outputs = self.net(inputs)
+                features, outputs = self.net.forward_with_features(inputs)
 
                 if split > 0:
 
@@ -345,30 +350,40 @@ class CSEnvironment():
                         onehot_labels = self.distillation(
                             inputs, onehot_labels, split).cuda()
                     else:
-                        
-                        # scores before scale
-                        outputs_bs = torch.cat((old_scores, new_scores), dim=1)
-                        #print(self.net.cosine.fc1.in_features, self.net.cosine.fc1.out_features)
-                        #print(self.net.cosine.fc2.in_features, self.net.cosine.fc2.out_features)
-                        #print(old_scores.size(), new_scores.size(), outputs_bs.size(), outputs.size())
-                        assert(outputs_bs.size()==outputs.size())
-                        gt_index = torch.zeros(outputs_bs.size()).cuda()
-                        gt_index = gt_index.scatter(1, labels.view(-1, 1), 1).ge(0.5)
-                        gt_scores = outputs_bs.masked_select(gt_index)
-                        # get top-K scores on novel classes
-                        max_novel_scores = outputs[:, num_old_classes:].topk(K, dim=1)[0]
-                        # cosine distillation
-                        #cosineL = nn.CosineEmbeddingLoss()(cur_features, ref_features.detach(), \
-                              #torch.ones(inputs.shape[0]).to(device)) * self.lamda
-                        #lam = 5 * np.sqrt(10/(num_old_classes))
-                        cosineL = self.cosine(inputs, self.lambd)
-                        # margin loss
-                        old_idx = labels.lt(num_old_classes)
-                        old_num = torch.nonzero(old_idx).size(0)
-                        gt_scores = gt_scores[old_idx].view(-1, 1).repeat(1, K)
-                        max_novel_scores = max_novel_scores[old_idx]
-                        marginL = nn.MarginRankingLoss(margin=0.5)(gt_scores.view(-1, 1),
-                                                                   max_novel_scores.view(-1, 1), torch.ones(old_num*K).cuda())
+                        with torch.no_grad():
+
+                            self.old_net.eval()
+
+                            old_features, old_outputs = self.old_net.forward_with_features(inputs)
+                            old_outputs = old_outputs.cuda()
+                            old_features = old_features.detach()
+
+                            cosineL = nn.CosineEmbeddingLoss()(features, old_features, \
+									                          torch.ones(inputs.shape[0]).cuda()) * self.lamb
+
+                            # scores before scale
+                            outputs_bs = torch.cat((old_scores, new_scores), dim=1)
+                            #print(self.net.cosine.fc1.in_features, self.net.cosine.fc1.out_features)
+                            #print(self.net.cosine.fc2.in_features, self.net.cosine.fc2.out_features)
+                            #print(old_scores.size(), new_scores.size(), outputs_bs.size(), outputs.size())
+                            assert(outputs_bs.size()==outputs.size())
+                            gt_index = torch.zeros(outputs_bs.size()).cuda()
+                            gt_index = gt_index.scatter(1, labels.cuda().view(-1, 1), 1).ge(0.5)
+                            gt_scores = outputs_bs.masked_select(gt_index)
+                            # get top-K scores on novel classes
+                            max_novel_scores = outputs_bs[:, num_old_classes:].topk(K, dim=1)[0]
+                            # cosine distillation
+                            #cosineL = nn.CosineEmbeddingLoss()(cur_features, ref_features.detach(), \
+                                #torch.ones(inputs.shape[0]).to(device)) * self.lamda
+                            #lam = 5 * np.sqrt(10/(num_old_classes))
+                            cosineL = self.cosine(inputs, self.lambd)
+                            # margin loss
+                            old_idx = labels.lt(num_old_classes)
+                            old_num = torch.nonzero(old_idx).size(0)
+                            gt_scores = gt_scores[old_idx].view(-1, 1).repeat(1, K)
+                            max_novel_scores = max_novel_scores[old_idx]
+                            marginL = nn.MarginRankingLoss(margin=0.5)(gt_scores.view(-1, 1),
+                                                                    max_novel_scores.view(-1, 1), torch.ones(old_num*K).cuda())
 
                 # compute the loss
                 if self.classifier == 'combo':
@@ -587,7 +602,7 @@ class CSEnvironment():
 
     def cosine(self, inputs, lmbd):
         features = self.net.extract_features(inputs)
-        old_features = self.old_net.extract_features(inputs)
+        old_old_features = self.old_net.forward_with_features(inputs)
         cosineLoss = nn.CosineEmbeddingLoss()(features, old_features,
                                               torch.ones(inputs.shape[0]).cuda())
         lg_dis = cosineLoss * lmbd
