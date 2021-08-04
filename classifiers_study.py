@@ -15,6 +15,7 @@ import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
 import math
 import torch.nn.functional as F
+import numpy.ma as ma
 
 
 '''
@@ -376,7 +377,7 @@ class CSEnvironment():
                             #cosineL = nn.CosineEmbeddingLoss()(cur_features, ref_features.detach(), \
                                 #torch.ones(inputs.shape[0]).to(device)) * self.lamda
                             #lam = 5 * np.sqrt(10/(num_old_classes))
-                            cosineL = self.cosine(inputs, self.lambd)
+                            #cosineL = self.cosine(inputs, self.lambd)
                             # margin loss
                             old_idx = labels.lt(num_old_classes)
                             old_num = torch.nonzero(old_idx).size(0)
@@ -523,51 +524,62 @@ class CSEnvironment():
 
         print(f'Building exemplars split {split}')
 
-        # initialize the data structures
+       # initialize the data structures
         classes_means = {}
         features = {}
         #exemplars = {}
 
-        for act_class in trainset.actual_classes:
+        self.net.eval()
+        with torch.no_grad():
+            # actual classes are the 10 new classes
+            for act_class in trainset.actual_classes:
 
-            # get all the images belonging to the current label
-            actual_idx = trainset.get_imgs_by_chosing_target(act_class)
-            # build a subset and a dataloader to better manage the images
-            subset = Subset(trainset, actual_idx)
-            loader = DataLoader(subset, batch_size=len(subset))
-            # get the mapped label of the actual class
-            mapped_label = trainset.map[act_class]
+                # get all the images belonging to the current label
+                actual_idx = trainset.get_imgs_by_chosing_target(act_class)
+                # build a subset and a dataloader to better manage the images
+                subset = Subset(trainset, actual_idx)
+                loader = DataLoader(subset, batch_size=len(subset))
+                # get the mapped label of the actual class
+                mapped_label = trainset.map[act_class]
+                
 
-            # extract the features of the images and take the class mean
-            for img, _ in loader:
-                img = img.cuda()
-                img = self.net.extract_features(img)
-                img = img / torch.norm(img)
-                features[mapped_label] = img.detach().cpu().numpy()
-                mean = torch.mean(img, 0)  # mean by column
-                classes_means[mapped_label] = mean.detach().cpu().numpy()
+                # extract the features of the images and take the class mean
+                for img, _ in loader:
+                    img = img.cuda()
+                    img = self.net.extract_features(img)
+                    #img = img / torch.norm(img)
+                    features[mapped_label] = img.cpu().numpy()
+                    mean = torch.mean(img, 0)  # mean by column
+                    classes_means[mapped_label] = mean.cpu().numpy()
 
-            exemplar = []
-            cl_mean = np.zeros((1, 64))
-            so_far_classes = split * 10 + 10
-            m = int(self.K / so_far_classes)
-            # apply the paper algorithm
-            for i in range(m):
-                x = classes_means[mapped_label] - \
-                    (cl_mean + features[mapped_label]) / (i+1)
-                # print(x.shape)
-                x = np.linalg.norm(x, axis=1)
-                # print(x.shape)
-                index = np.argmin(x)
-                # print(index)
-                cl_mean += features[mapped_label][index]
-                # take the best as image, not features
-                exemplar.append(loader.dataset[index])
+                exemplar = []
+                cl_mean = np.zeros((1, 64))
+                so_far_classes = split * 10 + 10
+                m = int(self.K / so_far_classes)
+                # apply the paper algorithm
+                indexes = []
+                i = 0
+                for i in range(m):
+                    if i > 0:
+                        cl_mean += features[mapped_label][index]
+                        # take the best as image, not features
+                    x = classes_means[mapped_label] - (cl_mean + features[mapped_label]) / (i+1)
+                    # print(x.shape)
+                    x = np.linalg.norm(x, axis=1)
+                    # masking for avoiding duplicated
+                    mask = np.zeros(len(x), int)
+                    mask[indexes] = 1
+                    x_masked = ma.masked_array(x, mask=mask)
+                    # print(x.shape)
+                    index = np.argmin(x_masked)                    
+                    indexes.append(index)                        
+                    exemplar.append(loader.dataset[index])
 
-            self.exemplars_set[mapped_label] = exemplar
+                #print(np.unique(indexes, return_counts=True))
+                
+                self.exemplars_set[mapped_label] = exemplar
 
-        #self.exemplars_set = exemplars
-
+            #self.exemplars_set = exemplars
     def reduce_exemplar_set(self, split):
         '''
         Called starting from the 2nd split after having 
