@@ -16,10 +16,14 @@ from sklearn.neighbors import KNeighborsClassifier
 import math
 import torch.nn.functional as F
 import numpy.ma as ma
+try:
+    import cPickle as pickle
+except:
+    import pickle
 
 
 '''
-functions for combo
+functions for combo, hooks
 '''
 cur_features = []
 ref_features = []
@@ -213,12 +217,14 @@ class CSEnvironment():
 
                 cur_lamb = 5
 
+                parameters_to_optimize = self.net.parameters()
+
                 if split > 0:
                     # save the old trained network in case of lwf or icarl
                     self.old_net = copy.deepcopy(self.net)
                     # freeze the network
-                    for p in self.old_net.parameters():
-                        p.requires_grad = False
+                    #for p in self.old_net.parameters():
+                        #p.requires_grad = False
                     # move the old net to GPUs
                     self.old_net.cuda()
                     # set up the resnet with the proper number of outputs neurons in
@@ -277,12 +283,11 @@ class CSEnvironment():
                     self.reduce_exemplar_set(split)
 
                 
-                if split > 0:
+                if split > 0 and self.classifier == 'combo':
                     self.lamb = 5 * math.sqrt(self.lambd)
                 else:
                     self.lamb = 5
 
-                parameters_to_optimize = self.net.parameters()
                 self.optimizer = optim.Adam(parameters_to_optimize, lr=0.01,
                                             weight_decay=0.00001)
                 self.scheduler = optim.lr_scheduler.MultiStepLR(
@@ -299,7 +304,7 @@ class CSEnvironment():
                 self.build_exemplars_set(self.trainset, split)
 
                 if self.classifier == 'KNN':
-                    self.train_KNN(1500)
+                    self.train_KNN(50)
                 # test
                 self.test(split)
 
@@ -317,11 +322,12 @@ class CSEnvironment():
 
         self.map = self.trainset.map
 
-        if split > 0:
+        if split > 0 and self.classifier == 'combo':
             self.old_net.eval()
             # hooks
+            num_old_classes = self.old_net.cosine.out_features
             handle_ref_features = self.old_net.cosine.register_forward_hook(get_ref_features)
-            handle_cur_features = self.old_net.cosine.register_forward_hook(get_cur_features)
+            handle_cur_features = self.net.cosine.register_forward_hook(get_cur_features)
             handle_old_scores_bs = self.net.cosine.fc1.register_forward_hook(get_old_scores_before_scale)
             handle_new_scores_bs = self.net.cosine.fc2.register_forward_hook(get_new_scores_before_scale)
 
@@ -336,6 +342,8 @@ class CSEnvironment():
 
                 # move to GPUs
                 inputs = inputs.cuda()
+                # reset the gradients
+                self.optimizer.zero_grad()
                 # print(labels)
                 labels = map_label_2(self.map, labels)
                 # map the label in range [split * 10, split + 10 * 10]
@@ -346,14 +354,14 @@ class CSEnvironment():
 
                 cosineL = torch.zeros(1).cuda()
                 marginL = torch.zeros(1).cuda()
-                num_old_classes = 10*split
+                #num_old_classes = 10*split
                 K = 2
 
                 # set the network to train mode
                 self.net.train()
 
                 # get the score
-                features, outputs = self.net.forward_with_features(inputs)
+                outputs = self.net(inputs)
 
                 if split > 0:
 
@@ -397,11 +405,10 @@ class CSEnvironment():
                                 max_novel_scores = max_novel_scores[old_idx]
                                 assert(gt_scores.size() == max_novel_scores.size())
                                 assert(gt_scores.size(0) == old_num)
-                                marginL = nn.MarginRankingLoss(margin=0.5)(gt_scores.view(-1, 1),
-                                                                        max_novel_scores.view(-1, 1), torch.ones(old_num*K).cuda())
+                                marginL = nn.MarginRankingLoss(margin=0.5)(gt_scores.view(-1, 1),\
+                                    max_novel_scores.view(-1, 1), torch.ones(old_num*K).cuda())
 
-                # reset the gradients
-                self.optimizer.zero_grad()
+                
 
                 # compute the loss
                 if self.classifier == 'combo':
@@ -436,7 +443,7 @@ class CSEnvironment():
             # let the scheduler goes to the next epoch
             self.scheduler.step()
 
-        if split > 0:
+        if split > 0 and self.classifier == 'combo':
             handle_ref_features.remove()
             handle_cur_features.remove()
             handle_old_scores_bs.remove()
@@ -529,6 +536,9 @@ class CSEnvironment():
             self.all_predictions.cpu().numpy()
         )
         plotConfusionMatrix("Finetuning", confusionMatrixData)
+        if split == 9:
+            with open(f'cm_data_{self.classifier}.pth', 'wb') as f:
+                pickle.dump(confusionMatrixData, f, 2)
 
     '''
     EXEMPLARS MANAGEMENT
@@ -561,7 +571,7 @@ class CSEnvironment():
                 for img, _ in loader:
                     img = img.cuda()
                     img = self.net.extract_features(img)
-                    #img = img / torch.norm(img)
+                    img = img / img.norm()
                     features[mapped_label] = img.cpu().numpy()
                     mean = torch.mean(img, 0)  # mean by column
                     classes_means[mapped_label] = mean.cpu().numpy()

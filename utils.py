@@ -5,7 +5,10 @@ import plotly.graph_objects as go
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-
+try:
+    import cPickle as pickle
+except:
+    import pickle
 
 def plotConfusionMatrix(method, confusionMatrixData):
     fig,ax=plt.subplots(figsize=(10,10))
@@ -18,7 +21,10 @@ def plotConfusionMatrix(method, confusionMatrixData):
     plt.savefig(filename, format='png', dpi=300)
     plt.show()
 
-
+def unpickle(file_path):
+    with open(file_path, 'rb') as f:
+        data = pickle.load(f)
+    return data
 
 def map_label_2(map_f, labels):
 
