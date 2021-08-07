@@ -6,7 +6,7 @@ import numpy as np
 from torch.backends import cudnn
 import torch
 import torch.nn as nn
-from torch.utils.data import Subset, DataLoader
+from torch.utils.data import Subset, DataLoader, ConcatDataset
 import torch.optim as optim
 import copy
 import pandas as pd
@@ -188,7 +188,7 @@ class CSEnvironment():
                         temp.extend(l)
 
                 # extend the dataset with the exemplars
-                updated_train_subset = train_subset + temp
+                updated_train_subset = ConcatDataset((train_subset, temp))
                 # prepare the dataloader
                 self.train_dataloader = DataLoader(updated_train_subset,
                                                    batch_size=self.batch_size,
@@ -246,6 +246,11 @@ class CSEnvironment():
                         self.net.cosine.fc1.weight.data = weight
                         self.net.cosine.sigma.data = sigma
                         self.lambd = out_features*1.0 / 10
+                        ignored_params = list(map(id, self.net.cosine.fc1.parameters()))
+                        base_params = filter(lambda p: id(p) not in ignored_params, \
+                            self.net.parameters())
+                        parameters_to_optimize = [{'params': base_params, 'lr': 0.01, 'weight_decay': 1e-5}, \
+                        {'params': self.net.cosine.fc1.parameters(), 'lr': 0, 'weight_decay': 0}]
                         self.net.cuda()
 
                     elif self.classifier == 'combo' and split > 1:
@@ -261,6 +266,11 @@ class CSEnvironment():
                         new_fc.sigma.data = self.net.cosine.sigma.data
                         self.net.cosine = new_fc
                         self.lambd = (out_features1 + out_features2)*1.0 / 10
+                        ignored_params = list(map(id, self.net.cosine.fc1.parameters()))
+                        base_params = filter(lambda p: id(p) not in ignored_params, \
+                            self.net.parameters())
+                        parameters_to_optimize = [{'params': base_params, 'lr': 0.01, 'weight_decay': 1e-5}, \
+                        {'params': self.net.cosine.fc1.parameters(), 'lr': 0, 'weight_decay': 0}]
                         self.net.cuda()
 
                     # reduce the exemplars set
@@ -308,9 +318,10 @@ class CSEnvironment():
         self.map = self.trainset.map
 
         if split > 0:
+            self.old_net.eval()
             # hooks
-            #handle_ref_features = self.old_net.cosine.register_forward_hook(get_ref_features)
-            #handle_cur_features = self.old_net.cosine.register_forward_hook(get_cur_features)
+            handle_ref_features = self.old_net.cosine.register_forward_hook(get_ref_features)
+            handle_cur_features = self.old_net.cosine.register_forward_hook(get_cur_features)
             handle_old_scores_bs = self.net.cosine.fc1.register_forward_hook(get_old_scores_before_scale)
             handle_new_scores_bs = self.net.cosine.fc2.register_forward_hook(get_new_scores_before_scale)
 
@@ -359,7 +370,7 @@ class CSEnvironment():
                             old_outputs = old_outputs.cuda()
                             old_features = old_features.detach()
 
-                            cosineL = nn.CosineEmbeddingLoss()(features, old_features, \
+                            cosineL = nn.CosineEmbeddingLoss()(cur_features, ref_features.detach(), \
 									                          torch.ones(inputs.shape[0]).cuda()) * self.lamb
 
                             # scores before scale
@@ -381,19 +392,22 @@ class CSEnvironment():
                             # margin loss
                             old_idx = labels.lt(num_old_classes)
                             old_num = torch.nonzero(old_idx).size(0)
-                            gt_scores = gt_scores[old_idx].view(-1, 1).repeat(1, K)
-                            max_novel_scores = max_novel_scores[old_idx]
-                            marginL = nn.MarginRankingLoss(margin=0.5)(gt_scores.view(-1, 1),
-                                                                    max_novel_scores.view(-1, 1), torch.ones(old_num*K).cuda())
+                            if old_num > 0:
+                                gt_scores = gt_scores[old_idx].view(-1, 1).repeat(1, K)
+                                max_novel_scores = max_novel_scores[old_idx]
+                                assert(gt_scores.size() == max_novel_scores.size())
+                                assert(gt_scores.size(0) == old_num)
+                                marginL = nn.MarginRankingLoss(margin=0.5)(gt_scores.view(-1, 1),
+                                                                        max_novel_scores.view(-1, 1), torch.ones(old_num*K).cuda())
+
+                # reset the gradients
+                self.optimizer.zero_grad()
 
                 # compute the loss
                 if self.classifier == 'combo':
                     loss = self.criterion(outputs, labels) + cosineL + marginL
                 else:
                     loss = self.criterion(outputs, onehot_labels)
-               
-                # reset the gradients
-                self.optimizer.zero_grad()
 
                 # propagate the derivatives
                 loss.backward()
@@ -423,8 +437,8 @@ class CSEnvironment():
             self.scheduler.step()
 
         if split > 0:
-            #handle_ref_features.remove()
-            #handle_cur_features.remove()
+            handle_ref_features.remove()
+            handle_cur_features.remove()
             handle_old_scores_bs.remove()
             handle_new_scores_bs.remove()
 
