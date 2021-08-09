@@ -16,7 +16,7 @@ Open World Recognition in Image Classification project for Machine Learning and 
     - Cosine Layer + losses as detailed in 
         > Learning a Unified Classifier Incrementally via Rebalancing by Hue *et all* 
 
-![Screenshot](plots/classifiers_study_v2.png)
+![Screenshot](plots/classifiers_study.png)
 ***MUST BE UPDATED***
 
 * Losses
