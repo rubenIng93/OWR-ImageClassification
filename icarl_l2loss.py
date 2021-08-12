@@ -5,14 +5,19 @@ import numpy as np
 from torch.backends import cudnn
 import torch
 import torch.nn as nn
-from torch.utils.data import Subset, DataLoader
+from torch.utils.data import Subset, DataLoader, ConcatDataset
 import torch.optim as optim
 import copy
 import pandas as pd
 from sklearn.metrics import confusion_matrix
+import numpy.ma as ma
+try:
+    import cPickle as pickle
+except:
+    import pickle
 
 
-class iCaRLTrainer():
+class iCaRLTrainer_L2():
 
     def __init__(self, seeds, file_writer, trainset, testset,
                  epochs, net, splits, b_size):
@@ -192,7 +197,7 @@ class iCaRLTrainer():
                         temp.extend(l)
 
                 # extend the dataset with the exemplars
-                updated_train_subset = train_subset + temp
+                updated_train_subset = ConcatDataset((train_subset, temp))
                 # prepare the dataloader
                 self.train_dataloader = DataLoader(updated_train_subset,
                                                    batch_size=self.batch_size,
@@ -234,18 +239,19 @@ class iCaRLTrainer():
                     self.reduce_exemplar_set(split)
 
                 parameters_to_optimize = self.net.parameters()
-                self.optimizer = optim.SGD(parameters_to_optimize, lr=2,
-                                           momentum=0.9, weight_decay=0.00001)
+                self.optimizer = optim.Adam(parameters_to_optimize, lr=0.01,
+                                            weight_decay=0.00001)
                 self.scheduler = optim.lr_scheduler.MultiStepLR(
-                    self.optimizer, [49, 63], gamma=0.2)
+                    self.optimizer, [49, 63], gamma=0.05)
 
                 self.running_loss_history = []
                 self.running_corrects_history = []
 
-                # update representation
-                self.build_exemplars_set(self.trainset, split)
+                
                 # train
                 self.train(split)
+                # update representation
+                self.build_exemplars_set(self.trainset, split)
                 # test
                 self.test(split)
 
@@ -256,8 +262,11 @@ class iCaRLTrainer():
         self.writer.close_file()
 
     def l2(self, inputs):
-        features = self.net.extract_features(inputs)
-        old_features = self.old_net.extract_features(inputs)
+        self.old_net.eval()
+        self.net.eval()
+        with torch.no_grad():
+            features = self.net.extract_features(inputs)
+            old_features = self.old_net.extract_features(inputs)
 
         l2loss = nn.MSELoss()
 
@@ -279,50 +288,64 @@ class iCaRLTrainer():
 
     def build_exemplars_set(self, trainset, split):
 
-        # initialize the data structures
+        print(f'Building exemplars split {split}')
+
+       # initialize the data structures
         classes_means = {}
         features = {}
         #exemplars = {}
 
-        for act_class in trainset.actual_classes:
+        self.net.eval()
+        with torch.no_grad():
+            # actual classes are the 10 new classes
+            for act_class in trainset.actual_classes:
 
-            # get all the images belonging to the current label
-            actual_idx = trainset.get_imgs_by_chosing_target(act_class)
-            # build a subset and a dataloader to better manage the images
-            subset = Subset(trainset, actual_idx)
-            loader = DataLoader(subset, batch_size=len(subset))
-            # get the mapped label of the actual class
-            mapped_label = trainset.map[act_class]
+                # get all the images belonging to the current label
+                actual_idx = trainset.get_imgs_by_chosing_target(act_class)
+                # build a subset and a dataloader to better manage the images
+                subset = Subset(trainset, actual_idx)
+                loader = DataLoader(subset, batch_size=len(subset))
+                # get the mapped label of the actual class
+                mapped_label = trainset.map[act_class]
+                
 
-            # extract the features of the images and take the class mean
-            for img, _ in loader:
-                img = img.cuda()
-                img = self.net.extract_features(img)
-                img = img / torch.norm(img)
-                features[mapped_label] = img.detach().cpu().numpy()
-                mean = torch.mean(img, 0)  # mean by column
-                classes_means[mapped_label] = mean.detach().cpu().numpy()
+                # extract the features of the images and take the class mean
+                for img, _ in loader:
+                    img = img.cuda()
+                    img = self.net.extract_features(img)
+                    img = img / img.norm()
+                    features[mapped_label] = img.cpu().numpy()
+                    mean = torch.mean(img, 0)  # mean by column
+                    classes_means[mapped_label] = mean.cpu().numpy()
 
-            exemplar = []
-            cl_mean = np.zeros((1, 64))
-            so_far_classes = split * 10 + 10
-            m = int(self.K / so_far_classes)
-            # apply the paper algorithm
-            for i in range(m):
-                x = classes_means[mapped_label] - \
-                    (cl_mean + features[mapped_label]) / (i+1)
-                # print(x.shape)
-                x = np.linalg.norm(x, axis=1)
-                # print(x.shape)
-                index = np.argmin(x)
-                # print(index)
-                cl_mean += features[mapped_label][index]
-                # take the best as image, not features
-                exemplar.append(loader.dataset[index])
+                exemplar = []
+                cl_mean = np.zeros((1, 64))
+                so_far_classes = split * 10 + 10
+                m = int(self.K / so_far_classes)
+                # apply the paper algorithm
+                indexes = []
+                i = 0
+                for i in range(m):
+                    if i > 0:
+                        cl_mean += features[mapped_label][index]
+                        # take the best as image, not features
+                    x = classes_means[mapped_label] - (cl_mean + features[mapped_label]) / (i+1)
+                    # print(x.shape)
+                    x = np.linalg.norm(x, axis=1)
+                    # masking for avoiding duplicated
+                    mask = np.zeros(len(x), int)
+                    mask[indexes] = 1
+                    x_masked = ma.masked_array(x, mask=mask)
+                    # print(x.shape)
+                    index = np.argmin(x_masked)                    
+                    indexes.append(index)                        
+                    exemplar.append(loader.dataset[index])
 
-            self.exemplars_set[mapped_label] = exemplar
+                #print(np.unique(indexes, return_counts=True))
+                
+                self.exemplars_set[mapped_label] = exemplar
 
-        #self.exemplars_set = exemplars
+            #self.exemplars_set = exemplars
 
     def reduce_exemplar_set(self, split):
         '''
@@ -388,3 +411,6 @@ class iCaRLTrainer():
             self.all_predictions.cpu().numpy()
         )
         plotConfusionMatrix("Finetuning", confusionMatrixData)
+        if split == 9:
+            with open(f'cm_data_L2.pth', 'wb') as f:
+                pickle.dump(confusionMatrixData, f, 2)
