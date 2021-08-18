@@ -15,11 +15,12 @@ class Cifar100Dataset(Dataset):
     - the seed
     - the transformation
     '''
-    def __init__(self, split, transform):
+    def __init__(self, split, transform, open_world=False):
 
         self.split = split
         #self.seed = seed
         self.transform = transform
+        self.open_world = open_world
         # dictionary which will contains the random splits 
         # of 10 classes (k=split, v=[random_classes])
         self.subClasses = {}
@@ -65,6 +66,18 @@ class Cifar100Dataset(Dataset):
         for i in range(10):
             self.subClasses[i] = classes[i*10:i*10+10]
 
+        if self.open_world:
+            # split in 50 known an 50 unknown
+            # known for closed world scenario
+            self.known_classes = {k:v for k,v in \
+                zip(list(self.subClasses.keys())[:5],\
+                    list(self.subClasses.values())[:5])}
+            # not used if trainset
+            # unknown for opetset scenario
+            self.unknown_classes = {k:v for k,v in \
+                zip(list(self.subClasses.keys())[5:],\
+                    list(self.subClasses.values())[5:])}
+
         self.map = {k: v for v, k in enumerate(classes)}
         
 
@@ -78,12 +91,17 @@ class Cifar100Dataset(Dataset):
             (self.actual_classes, self.subClasses[i])
         )
 
-    def change_subclasses(self, split):
+    def change_subclasses(self, split, open_world=False):
         '''
         method that change the split of 10 classes 
         according to the parameter split
         '''
-        self.actual_classes = self.subClasses[split]
+        if self.split == 'test' and open_world:
+            self.actual_classes = []
+            for cl in self.unknown_classes.values():
+                self.actual_classes.extend(cl)
+        else:
+            self.actual_classes = self.subClasses[split]
 
     
     def get_imgs_by_chosing_target(self, y):
