@@ -118,6 +118,23 @@ class Cifar100Dataset(Dataset):
         return idx
     
     
+    def get_unknown_images(self):
+        assert(self.split == 'test' and self.open_world)
+        '''
+        Function that retrieves the indexes of all the images
+        belonging to the classes in 'self.unknown_classes' if open world set.
+        It returns a list of indexes
+        '''
+        idx = []
+        uk_classes = []
+        for cl in self.unknown_classes.values():
+            uk_classes.extend(cl)
+            
+        for img_idx, targ in enumerate(self.dataset.targets):
+            if targ in uk_classes:
+                idx.append(img_idx)
+        return idx
+    
     def get_imgs_by_target(self):
         '''
         Function that retrieves the indexes of all the images
