@@ -59,12 +59,15 @@ class FileWriter():
     process
     '''
 
-    def __init__(self, filename):
+    def __init__(self, filename, open_world=False):
 
         self.datafile = open(filename, 'w')
 
-        print('seed\tsplit_0\tsplit_1\tsplit_2\tsplit_3\tsplit_4\tsplit_5\tsplit_6\tsplit_7\tsplit_8\tsplit_9',
+        if not open_world:
+            print('seed\tsplit_0\tsplit_1\tsplit_2\tsplit_3\tsplit_4\tsplit_5\tsplit_6\tsplit_7\tsplit_8\tsplit_9',
               file=self.datafile)
+        else:
+            print('seed\tsplit_0\tsplit_1\tsplit_2\tsplit_3\tsplit_4', file=self.datafile)
 
     def register_seed(self, accuracy_list):
         print(*accuracy_list, sep='\t', file=self.datafile)
