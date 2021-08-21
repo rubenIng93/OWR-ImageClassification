@@ -113,7 +113,7 @@ class Loss_Experiments():
                 # get the score
                 outputs = self.net(inputs)
                 # compute the loss
-                if self.cl_loss == 'ce':
+                if self.cl_loss == 'bce':
                     loss = self.criterion(outputs, onehot_labels) + l1_loss +l2_loss
                 else:
                     loss = self.criterion(outputs, labels) + l1_loss +l2_loss
@@ -281,7 +281,7 @@ class Loss_Experiments():
         self.writer.close_file()
 
     '''
-    Losses
+    DIstillation Losses
     '''
     
     def l1(self, inputs):
