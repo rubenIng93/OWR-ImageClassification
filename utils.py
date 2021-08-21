@@ -118,3 +118,37 @@ def trend_chart(filename, title):
                           tickvals=x                          
                       ))
     fig.show()
+
+
+def compute_h_mean(closed_dict, open_dict):
+
+    '''
+    Compute the harmonic mean
+    the input dictionaries have as key the threshold
+    (retrieve it as str()!) and as value the accuracy
+    
+    Returns: a dictionary k=threshold, value=harmonic mean 
+    '''
+
+    result = {}
+
+    for t in closed_dict.keys():
+        result[str(t)] = 2 / (1/closed_dict[str(t)] + 1/open_dict[str(t)])
+    return result
+
+
+
+def compute_a_mean(closed_dict, open_dict):
+    '''
+    Compute the aritmetic mean
+    the input dictionaries have as key the threshold
+    (retrieve it as str()!) and as value the accuracy
+    
+    Returns: a dictionary k=threshold, value=harmonic mean 
+    '''
+
+    result = {}
+
+    for t in closed_dict.keys():
+        result[str(t)] = (closed_dict[str(t)] + open_dict[str(t)]) /2
+    return result
