@@ -271,8 +271,8 @@ class Open_World():
                 
 
                 print(f"\nSplit {split}")
-                print(f"Accuracy open + closed w.r. (Harmonic mean) = {h_mean_by_threshold:.4f}")
-                print(f"Accuracy open + closed w.r. (Aritmetic mean) = {a_mean_by_threshold:.4f}")
+                print(f"Accuracy open + closed w.r. (Harmonic mean) = {h_mean_by_threshold.values()}")
+                print(f"Accuracy open + closed w.r. (Aritmetic mean) = {a_mean_by_threshold.values()}")
 
             # register the seed's results
             self.writer.register_seed(self.harmonic_means)
@@ -400,29 +400,29 @@ class Open_World():
             # get the predictions
             max_p, preds = torch.max(probs, 1) 
 
-            for threshold in self.threshold:            
-                mask = torch.lt(max_p, self.threshold)
+            for t in self.threshold:            
+                mask = torch.lt(max_p, t)
                 # unknown samples become -1
                 preds[mask] = -1
 
                 # sum the actual scores to the metric
-                accuracy_by_threshold[str(threshold)] += torch.sum(preds == targets)
-                unknown_by_threshold[str(threshold)] += torch.sum(preds == -1)
+                accuracy_by_threshold[str(t)] += torch.sum(preds == targets)
+                unknown_by_threshold[str(t)] += torch.sum(preds == -1)
 
                 
 
         # calculate the accuracy
 
-        for threshold in self.threshold:
+        for t in self.threshold:
             
-            accuracy_by_threshold[str(threshold)] = accuracy_by_threshold[str(threshold)]\
+            accuracy_by_threshold[str(t)] = accuracy_by_threshold[str(t)].cpu().numpy()\
                 /float(len(self.known_test_dataloader.dataset))
             
-            unknown_by_threshold[str(threshold)] = unknown_by_threshold[str(threshold)]\
+            unknown_by_threshold[str(t)] = unknown_by_threshold[str(t)].cpu().numpy()\
                 /float(len(self.known_test_dataloader.dataset))
 
-            print(f'Accuracy t={threshold} = {accuracy_by_threshold[str(threshold)]}')
-            print(f'Perc unknown t={threshold} = {unknown_by_threshold[str(threshold)]}')
+            print(f'Accuracy    t={t} = {accuracy_by_threshold[str(t)]}')
+            print(f'PercUnknown t={t} = {unknown_by_threshold[str(t)]}')
 
     
         # update the global metric
@@ -468,25 +468,25 @@ class Open_World():
             probs = softmax(outputs).data
             # get the predictions
             max_p, preds = torch.max(probs, 1) 
-            
-            mask = torch.lt(max_p, self.threshold)
-            # unknown samples become -1
-            preds[mask] = -1
 
-            # sum the actual scores to the metric
-            #running_corrects_test += torch.sum(preds == targets)
-            running_unknown += torch.sum(preds == -1)
+            for t in self.threshold:            
+                mask = torch.lt(max_p, t)
+                # unknown samples become -1
+                preds[mask] = -1
+
+                # sum the actual scores to the metric
+                unknown_by_threshold[str(t)] += torch.sum(preds == -1)
 
         # calculate the accuracy
         #accuracy = running_corrects_test / \
         #    float(len(self.test_dataloader.dataset))
 
-        for threshold in self.threshold:
+        for t in self.threshold:
             
-            unknown_by_threshold[str(threshold)] = unknown_by_threshold[str(threshold)]\
-                /float(len(self.known_test_dataloader.dataset))
+            unknown_by_threshold[str(t)] = unknown_by_threshold[str(t)].cpu().numpy()\
+                /float(len(self.unknown_test_dataloader.dataset))
 
-            print(f'Perc unknown t={threshold} = {unknown_by_threshold[str(threshold)]}') # in open world always 5000
+            print(f'Perc unknown t={t} = {unknown_by_threshold[str(t)]}') # in open world always 5000
     
         # update the global metric
         #self.accuracy_per_split.append(accuracy.cpu().numpy())
