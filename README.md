@@ -19,10 +19,15 @@ Open World Recognition in Image Classification project for Machine Learning and 
 ![Screenshot](plots/classifier_study.png)
 ***MUST BE UPDATED***
 
-* Losses
-    - loss a **baseline**
-    - loss b
-    - loss c
+* Losses (classification + distillation)
+    - iCaRL (BCE + lfc) **baseline**
+    - BCE + L1
+    - BCE + L2
+    - CE + L1
+    - CE + L2
+
+![Screenshot](plots/losses_study.png)
+
 
 
 ### Dataset usage - example
