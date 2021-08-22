@@ -274,8 +274,15 @@ class Open_World():
                 print(f"Accuracy open + closed w.r. (Harmonic mean) = {h_mean_by_threshold.values()}")
                 print(f"Accuracy open + closed w.r. (Aritmetic mean) = {a_mean_by_threshold.values()}")
 
+
             # register the seed's results
             self.writer.register_seed(self.harmonic_means)
+            # save the seed's data
+            # is a compressed file that contains a list in the 
+            # following format: [seed, {dict_split1}, {dict_split2}, ...]
+            # where the each dictionary is structured as 
+            # k=str(threshold); v=harmonic mean between closed wr and open world
+            save_data(f'harmonic_means_owr_{seed}.pth', self.harmonic_means)
 
         # close the file writer
         self.writer.close_file()
@@ -435,7 +442,7 @@ class Open_World():
 
     def test_open_world(self):
 
-        print('Test open World')
+        print('\nTest open World')
 
         unknown_by_threshold = {str(t): 0 for t in self.threshold}
 

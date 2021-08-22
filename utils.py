@@ -26,6 +26,10 @@ def unpickle(file_path):
         data = pickle.load(f)
     return data
 
+def save_data(filename, data):
+    with open(filename, 'wb') as f:
+        pickle.dump(data, f, 2)
+
 def map_label_2(map_f, labels):
 
     mapped_labels = list(map(lambda lb: map_f[lb], labels.cpu().numpy()))
