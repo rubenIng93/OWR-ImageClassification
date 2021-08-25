@@ -356,9 +356,6 @@ class Variations_Model():
         print('\nBalanced Finetuning step')
         print(self.accuracy_per_class)
 
-        #mask = torch.lt(self.accuracy_per_class, 0.6)
-        #print(mask)
-
         exemplars = []
         #print(self.exemplars_set.keys)
         for label in self.exemplars_set.keys():
@@ -375,9 +372,9 @@ class Variations_Model():
 
           parameters_to_optimize = self.net.parameters()
 
-          optimizer = optim.SGD(parameters_to_optimize, lr=0.01, momentum=0.9, weight_decay=0.00001)
+          optimizer = optim.SGD(parameters_to_optimize, lr=2, momentum=0.9, weight_decay=0.00001)
           scheduler = optim.lr_scheduler.MultiStepLR(
-                    self.optimizer, [9, 19], gamma=0.1)
+                    self.optimizer, [21, 27], gamma=0.2)
 
 
           for e in range(epochs):
