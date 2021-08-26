@@ -372,9 +372,9 @@ class Variations_Model():
 
           parameters_to_optimize = self.net.parameters()
 
-          optimizer = optim.SGD(parameters_to_optimize, lr=2, momentum=0.9, weight_decay=0.00001)
+          optimizer = optim.SGD(parameters_to_optimize, lr=1, momentum=0.9, weight_decay=0.00001)
           scheduler = optim.lr_scheduler.MultiStepLR(
-                    self.optimizer, [21, 27], gamma=0.2)
+                    self.optimizer, [9, 19], gamma=0.1)
 
 
           for e in range(epochs):
