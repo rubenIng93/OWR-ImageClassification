@@ -123,13 +123,20 @@ class Variations_Model():
                 running_loss += loss.item()
                 running_corrects += torch.sum(preds == labels.data)
 
+                if (e == self.epochs - 1):
+                  self.all_targets_train = torch.cat(
+                  (self.all_targets_train.cuda(), labels.cuda()), dim=0)
+                  self.all_predictions_train = torch.cat(
+                  (self.all_predictions_train.cuda(), preds.cuda()), dim=0)
+
+
             # compute the epoch's accuracy and loss
             epoch_loss = running_loss/len(self.train_dataloader.dataset)
             epoch_acc = running_corrects.float()/len(self.train_dataloader.dataset)
             self.running_loss_history.append(epoch_loss)
             self.running_corrects_history.append(epoch_acc)
 
-            # display every 5 epochs
+            # display every 10 epochs
             if (e+1)%10==0:
                 print('epoch: {}/{}, LR={}'
                       .format(e+1, self.epochs, self.scheduler.get_last_lr()))
@@ -139,19 +146,14 @@ class Variations_Model():
             # let the scheduler goes to the next epoch
             self.scheduler.step()
 
-        
-        self.all_targets_train = torch.cat(
-            (self.all_targets_train.cuda(), labels.cuda()), dim=0)
-        self.all_predictions_train = torch.cat(
-            (self.all_predictions_train.cuda(), preds.cuda()), dim=0)
-
-        confusionMatrixData = confusion_matrix(
+        if (split != 0):
+          confusionMatrixData = confusion_matrix(
             self.all_targets_train.cpu().numpy(),
             self.all_predictions_train.cpu().numpy()
-        )
+          )
 
-        self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
-        print(self.accuracy_per_class)
+          self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
+          print(self.accuracy_per_class)
 
     def classify(self, net, inputs):
 
@@ -384,7 +386,7 @@ class Variations_Model():
         for label in self.exemplars_set.keys():
             #print(label)
             if (self.accuracy_per_class[label] < 0.5):
-              #print(label)
+              print(label)
               exemplars.extend(self.exemplars_set[label])
 
         #print(exemplars)
