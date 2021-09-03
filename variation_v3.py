@@ -70,7 +70,8 @@ class Variations_Model():
         all_targets_train = torch.tensor([])
         self.all_targets_train = all_targets_train.type(torch.LongTensor)
         all_predictions_train = torch.tensor([])
-        self.all_predictions_train = all_predictions_train.type(torch.LongTensor)
+        self.all_predictions_train = all_predictions_train.type(
+            torch.LongTensor)
 
         self.map = self.trainset.map
 
@@ -113,7 +114,7 @@ class Variations_Model():
 
                 self.optimizer.step()
                 # get the predictions
-                
+
                 _, preds = torch.max(outputs, 1)
                 '''
                 preds = self.classify(self.net, inputs)
@@ -124,11 +125,10 @@ class Variations_Model():
                 running_corrects += torch.sum(preds == labels.data)
 
                 if (e == self.epochs - 1):
-                  self.all_targets_train = torch.cat(
-                  (self.all_targets_train.cuda(), labels.cuda()), dim=0)
-                  self.all_predictions_train = torch.cat(
-                  (self.all_predictions_train.cuda(), preds.cuda()), dim=0)
-
+                    self.all_targets_train = torch.cat(
+                        (self.all_targets_train.cuda(), labels.cuda()), dim=0)
+                    self.all_predictions_train = torch.cat(
+                        (self.all_predictions_train.cuda(), preds.cuda()), dim=0)
 
             # compute the epoch's accuracy and loss
             epoch_loss = running_loss/len(self.train_dataloader.dataset)
@@ -137,7 +137,7 @@ class Variations_Model():
             self.running_corrects_history.append(epoch_acc)
 
             # display every 10 epochs
-            if (e+1)%10==0:
+            if (e+1) % 10 == 0:
                 print('epoch: {}/{}, LR={}'
                       .format(e+1, self.epochs, self.scheduler.get_last_lr()))
                 print('training loss: {:.4f},  training accuracy {:.4f} %'
@@ -147,13 +147,13 @@ class Variations_Model():
             self.scheduler.step()
 
         if (split != 0):
-          confusionMatrixData = confusion_matrix(
-            self.all_targets_train.cpu().numpy(),
-            self.all_predictions_train.cpu().numpy()
-          )
+            confusionMatrixData = confusion_matrix(
+                self.all_targets_train.cpu().numpy(),
+                self.all_predictions_train.cpu().numpy()
+            )
 
-          self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
-          print(self.accuracy_per_class)
+            self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
+            # print(self.accuracy_per_class)
 
     def classify(self, net, inputs):
 
@@ -214,8 +214,8 @@ class Variations_Model():
                 if bool(self.exemplars_set):
                     # if there is something in the exemplar set
                     for l in self.exemplars_set.values():
-                      temp.extend(l)
-                
+                        temp.extend(l)
+
                 # extend the dataset with the exemplars
                 updated_train_subset = train_subset + temp
                 # prepare the dataloader
@@ -271,17 +271,22 @@ class Variations_Model():
                 self.train(split)
 
                 # post train weights updating
-                self.post_train_weights_update()
-               
-                #if split > 0:
-                    # balanced finetuning over the exemplars
-                    #self.balanced_finetuning(split)
+                # if split > 0:
+                # self.post_train_weights_update()
+
+                # if split > 0:
+                # balanced finetuning over the exemplars
+                # self.balanced_finetuning(split)
 
                 # update representation
-                self.build_exemplars_set(self.trainset, split)                    
-                
+                self.build_exemplars_set(self.trainset, split)
+
                 # test
-                self.test(split)
+                if split > 0:
+                    factors = np.linspace(0.95, 1.05, 6)
+                    self.weighted_nme_test(factors)
+                else:
+                    self.test(split)
 
             # register the seed's results
             self.writer.register_seed(self.accuracy_per_split)
@@ -289,7 +294,6 @@ class Variations_Model():
         # close the file writer
         self.writer.close_file()
 
-    
     def post_train_weights_update(self):
         '''
         Variation
@@ -298,27 +302,26 @@ class Variations_Model():
         weights with those learned in the preaviuos split (for old step classes)
         then those in the last layer of the old network
         '''
-        
+
         old_nodes = self.old_net.fc.out_features
         in_features = self.old_net.fc.in_features
 
-        ### Keep the learned weights
+        # Keep the learned weights
         new_weights = self.net.fc.weight.data
         old_weights = self.old_net.fc.weight.data
 
         # update the weights in the last layer
         linear = nn.Linear(in_features, old_nodes + 10)
         linear.weight.data[:old_nodes] = old_weights
-        linear.weight.data[old_nodes:] = new_weights
+        linear.weight.data[old_nodes:] = new_weights[old_nodes:]
+
+        # normalize the new layer
+        linear.weight.data = linear.weight.data / linear.weight.data.norm()
 
         # substitute the last layer
         self.net.fc = linear
         self.net.cuda()
 
-
-    
-    
-    
     def distillation(self, inputs, new_onehot_labels, split):
         m = nn.Sigmoid()
         # compute the old network's outputs for the new classes
@@ -349,7 +352,6 @@ class Variations_Model():
                 loader = DataLoader(subset, batch_size=len(subset))
                 # get the mapped label of the actual class
                 mapped_label = trainset.map[act_class]
-                
 
                 # extract the features of the images and take the class mean
                 for img, _ in loader:
@@ -371,7 +373,8 @@ class Variations_Model():
                     if i > 0:
                         cl_mean += features[mapped_label][index]
                         # take the best as image, not features
-                    x = classes_means[mapped_label] - (cl_mean + features[mapped_label]) / (i+1)
+                    x = classes_means[mapped_label] - \
+                        (cl_mean + features[mapped_label]) / (i+1)
                     # print(x.shape)
                     x = np.linalg.norm(x, axis=1)
                     # masking for avoiding duplicated
@@ -379,12 +382,12 @@ class Variations_Model():
                     mask[indexes] = 1
                     x_masked = ma.masked_array(x, mask=mask)
                     # print(x.shape)
-                    index = np.argmin(x_masked)                    
-                    indexes.append(index)                        
+                    index = np.argmin(x_masked)
+                    indexes.append(index)
                     exemplar.append(loader.dataset[index])
 
                 #print(np.unique(indexes, return_counts=True))
-                
+
                 self.exemplars_set[mapped_label] = exemplar
 
             #self.exemplars_set = exemplars
@@ -395,76 +398,174 @@ class Variations_Model():
         computed the outputs and before updating the exemplars set
         '''
         # m is the new target cardinality for each exemplar set
-        
+
         new_m = int(self.K / (split * 10 + 10))
 
         for k in self.exemplars_set.keys():
-          self.exemplars_set[k] = self.exemplars_set[k][:new_m]
+            self.exemplars_set[k] = self.exemplars_set[k][:new_m]
 
     def balanced_finetuning(self, split, epochs=30):
-
         '''
         End-to-End Incremental Learning paper.
         Use the exemplars for finetuning with small learning rate
         '''
 
         print('\nBalanced Finetuning step')
-        #print(self.accuracy_per_class)
+        # print(self.accuracy_per_class)
 
         exemplars = []
-        #print(self.exemplars_set.keys)
+        # print(self.exemplars_set.keys)
         for label in self.exemplars_set.keys():
-            #print(label)
+            # print(label)
             if (self.accuracy_per_class[label] < 0.5):
-              print(label)
-              exemplars.extend(self.exemplars_set[label])
+                print(label)
+                exemplars.extend(self.exemplars_set[label])
 
-        #print(exemplars)
+        # print(exemplars)
 
         if (len(exemplars) > 0):
-          exemplars_loader = DataLoader(exemplars, batch_size=self.batch_size,
-                                                  shuffle=True, num_workers=2)
+            exemplars_loader = DataLoader(exemplars, batch_size=self.batch_size,
+                                          shuffle=True, num_workers=2)
 
-          parameters_to_optimize = self.net.parameters()
+            parameters_to_optimize = self.net.parameters()
 
-          optimizer = optim.SGD(parameters_to_optimize, lr=1, momentum=0.9, weight_decay=0.00001)
-          scheduler = optim.lr_scheduler.MultiStepLR(
-                    self.optimizer, [9, 19], gamma=0.1)
+            optimizer = optim.SGD(parameters_to_optimize,
+                                  lr=1, momentum=0.9, weight_decay=0.00001)
+            scheduler = optim.lr_scheduler.MultiStepLR(
+                self.optimizer, [9, 19], gamma=0.1)
 
+            for e in range(epochs):
 
-          for e in range(epochs):
+                # iterate over the batches
+                for inputs, labels in exemplars_loader:
 
-            # iterate over the batches
-            for inputs, labels in exemplars_loader:
+                    # move to GPUs
+                    inputs = inputs.cuda()
+                    # print(labels)
+                    labels = map_label_2(self.map, labels)
+                    # map the label in range [split * 10, split + 10 * 10]
+                    # labels = map_label(labels, self.trainset.actual_classes, split)
+                    # transform it in one hot encoding to fit the BCELoss
+                    # dimension [batchsize, classes]
+                    onehot_labels = torch.eye(split*10+10)[labels].to("cuda")
 
-                # move to GPUs
-                inputs = inputs.cuda()
-                # print(labels)
-                labels = map_label_2(self.map, labels)
-                # map the label in range [split * 10, split + 10 * 10]
-                # labels = map_label(labels, self.trainset.actual_classes, split)
-                # transform it in one hot encoding to fit the BCELoss
-                # dimension [batchsize, classes]
-                onehot_labels = torch.eye(split*10+10)[labels].to("cuda")
+                    # set the network to train mode
+                    self.net.train()
 
-                # set the network to train mode
-                self.net.train()
+                    # get the score
+                    outputs = self.net(inputs)
+                    # compute the loss
+                    loss = self.criterion(outputs, onehot_labels)
+                    # reset the gradients
+                    optimizer.zero_grad()
 
-                # get the score
-                outputs = self.net(inputs)
-                # compute the loss
-                loss = self.criterion(outputs, onehot_labels)
-                # reset the gradients
-                optimizer.zero_grad()
+                    # propagate the derivatives
+                    loss.backward()
 
-                # propagate the derivatives
-                loss.backward()
+                    optimizer.step()
 
-                optimizer.step()
+                # let the scheduler goes to the next epoch
+                scheduler.step()
 
-            # let the scheduler goes to the next epoch
-            scheduler.step()
+    '''
+    Variation Weighted NME
+    '''
 
+    def weighted_nme_test(self, factors):
+
+        print(f'\nWeighted Nearest Mean of Exemplars')
+        print(
+            f'testing the following factors over the new labels:\n {factors}\n')
+
+        top_accuracy = 0.0
+        top_factor = 0
+        num_old_classes = self.old_net.fc.out_features
+
+        for factor in factors:
+
+            all_old_preds = []
+            tot_img = 0
+            corrects = 0
+            new_img = 0
+            old_img = 0
+
+            for img, lbl in self.test_dataloader:
+                tot_img += img.shape[0]
+                new_img += torch.sum(lbl >= num_old_classes)
+                old_img += torch.sum(lbl < num_old_classes)
+                img = img.cuda()
+                lbl = lbl.cuda()
+                lbl = map_label_2(self.map, lbl)
+                # classify
+                self.net.eval()
+                means = {}  # the keys are the mapped labels
+                # nearest means class classifier
+                for label in self.exemplars_set.keys():
+                    loader = DataLoader(self.exemplars_set[label],
+                                        batch_size=len(self.exemplars_set[label]))
+                    with torch.no_grad():
+                        for imgs, _ in loader:  # a single batch
+                            imgs = imgs.cuda()
+                            self.net.cuda()
+                            features = self.net.extract_features(imgs)
+                            features = features / features.norm()
+                            # this is the mean of all images in the same class exemplars
+                            mean = torch.mean(features, 0)
+                            means[label] = mean
+
+                # assing the class to the inputs
+                norms = []
+                features = self.net.extract_features(img)
+                for k in means.keys():
+                    mean_k = means[k]
+                    mean_k = mean_k/mean_k.norm()
+                    # induce a bias towards old classes
+                    if k > (len(self.exemplars_set.keys()) - 11):
+                        norm = torch.norm((features - mean_k*factor), dim=1)
+                    else:
+                        norm = torch.norm((features - mean_k), dim=1)
+                    #print(f"Norm shape: {norm.shape}")
+                    norms.append(norm)
+
+                norms = torch.stack(norms)
+
+                preds = torch.argmin(norms, dim=0)
+
+                self.all_targets = torch.cat(
+                    (self.all_targets.cuda(), lbl.cuda()), dim=0)
+                self.all_predictions = torch.cat(
+                    (self.all_predictions.cuda(), preds.cuda()), dim=0)
+
+                corrects += torch.sum(preds == lbl)
+
+                old_preds_mask = preds.gt(num_old_classes - 1)
+
+                old_preds = torch.masked_select(preds, old_preds_mask)
+
+                all_old_preds.extend(old_preds)
+            
+            print(f'Tot images = {tot_img}')
+            print(f'With f = {factor}; old preds = {len(all_old_preds)}')
+            print(f'Then {len(all_old_preds) / tot_img *100} %')
+            accuracy = corrects / tot_img
+            if accuracy > top_accuracy:
+                top_accuracy = accuracy
+                top_factor = factor
+                top_preds = preds
+            print(f'Accuracy = {corrects / tot_img * 100} %')
+            #print(f'Old_images: {old_img} / New images: {new_img}\n')
+
+        print(
+            f'Best test accuracy = {top_accuracy:.4f} with λ = {top_factor}\n')
+        
+        confusionMatrixData = confusion_matrix(
+            self.all_targets.cpu().numpy(),
+            self.all_predictions.cpu().numpy()
+        )
+
+        plotConfusionMatrix("Finetuning", confusionMatrixData)
+
+        return top_preds.cuda()
 
     def test(self, split):
 
@@ -494,7 +595,7 @@ class Variations_Model():
             '''
             outputs = self.net(images)
             # get the predictions
-            _, preds = torch.max(outputs, 1)            
+            _, preds = torch.max(outputs, 1)     
             '''
             self.all_targets = torch.cat(
                 (self.all_targets.cuda(), targets.cuda()), dim=0)
@@ -517,6 +618,6 @@ class Variations_Model():
         )
 
         #self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
-        #print(confusionMatrixData.diagonal()/confusionMatrixData.sum(1))
+        # print(confusionMatrixData.diagonal()/confusionMatrixData.sum(1))
 
         plotConfusionMatrix("Finetuning", confusionMatrixData)

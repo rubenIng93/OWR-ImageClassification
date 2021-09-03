@@ -5,7 +5,8 @@ import numpy as np
 from torch.backends import cudnn
 import torch
 import torch.nn as nn
-from torch.utils.data import Subset, DataLoader
+from torch.utils.data import Subset, DataLoader, WeightedRandomSampler,\
+ ConcatDataset, Dataset
 import torch.optim as optim
 import copy
 import pandas as pd
@@ -195,11 +196,24 @@ class Variations_Model():
                       temp.extend(l)
                 
                 # extend the dataset with the exemplars
-                updated_train_subset = train_subset + temp
+                updated_train_subset = ConcatDataset((temp, train_subset))
+
+                ### Oversampling ###
+                sampler = None
+                shuffle = True
+                if split > 0:
+                    
+                    print('\nOversampling the unbalanced classes\n')
+                    sampler = self.oversampling(updated_train_subset)
+                    shuffle = False
+
                 # prepare the dataloader
                 self.train_dataloader = DataLoader(updated_train_subset,
-                                                   batch_size=self.batch_size,
-                                                   shuffle=True, num_workers=2)
+                                                  batch_size=self.batch_size,
+                                                  shuffle=shuffle, num_workers=2,
+                                                  sampler=sampler)   
+
+                #print(f'Dataloader length: {len(self.train_dataloader.)}')                             
 
                 # testset preparation
                 if split == 0:
@@ -248,9 +262,9 @@ class Variations_Model():
                 # train
                 self.train(split)
                
-                if split > 0:
+                #if split > 0:
                     # balanced finetuning over the exemplars
-                    self.balanced_finetuning(split)
+                    #self.balanced_finetuning(split)
 
                 # update representation
                 self.build_exemplars_set(self.trainset, split)                    
@@ -263,6 +277,36 @@ class Variations_Model():
 
         # close the file writer
         self.writer.close_file()
+
+    def oversampling(self, dataset):
+        '''
+        The dataset is supposed to be a ConcatDataset with the following structure:
+        1- a Subset; 
+        2- a list of Tensor
+
+        Returns a sampler
+        '''
+
+        all_targets = []
+        for sets in dataset.datasets:
+          if isinstance(sets, Subset):
+            for _, label in sets:
+              all_targets.append(label)
+          else:
+            for tensor in sets:
+              all_targets.append(tensor[1])
+
+        # map the targets in range 0, n_class
+        mapped_targets = [self.trainset.map[t] for t in all_targets]
+        
+        class_count = np.unique(mapped_targets, return_counts=True)[1]
+
+        weight = 1. / class_count
+        samples_weight = weight[mapped_targets]                  
+        samples_weight = torch.from_numpy(samples_weight)
+        sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
+
+        return sampler
 
     def distillation(self, inputs, new_onehot_labels, split):
         m = nn.Sigmoid()
@@ -461,7 +505,7 @@ class Variations_Model():
             self.all_predictions.cpu().numpy()
         )
 
-        self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
-        print(confusionMatrixData.diagonal()/confusionMatrixData.sum(1))
+        #self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
+        #print(confusionMatrixData.diagonal()/confusionMatrixData.sum(1))
 
         plotConfusionMatrix("Finetuning", confusionMatrixData)
