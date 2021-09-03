@@ -159,36 +159,33 @@ class Variations_Model():
 
         self.net.eval()
 
-        means = {} # the keys are the mapped labels
-        means_list = []
+        means = {}  # the keys are the mapped labels
         # nearest means class classifier
-        for label in self.exemplars_set.keys(): 
+        for label in self.exemplars_set.keys():
             loader = DataLoader(self.exemplars_set[label], batch_size=len(self.exemplars_set[label])
                                 )
             with torch.no_grad():
-                for img, _ in loader: # a single batch
+                for img, _ in loader:  # a single batch
                     img = img.cuda()
                     net = net.cuda()
                     features = net.extract_features(img)
-                    #features = features / features.norm()
-                    mean = torch.mean(features, 0) # this is the mean of all images in the same class exemplars
-                    mean = mean / mean.norm()
-                    means_list.append(mean)
-                    #means[label] = mean
+                    features = features / features.norm()
+                    # this is the mean of all images in the same class exemplars
+                    mean = torch.mean(features, 0)
+                    means[label] = mean
 
-        ex_means = torch.stack(means_list)
         # assing the class to the inputs
         norms = []
         features = net.extract_features(inputs)
-        for f in features: 
-            #mean_k = means[k]
-            #mean_k = mean_k/mean_k.norm()            
-            norm = torch.norm((ex_means - f), dim=1)
+        for k in means.keys():
+            mean_k = means[k]
+            mean_k = mean_k/mean_k.norm()
+            norm = torch.norm((features - mean_k), dim=1)
             #print(f"Norm shape: {norm.shape}")
             norms.append(norm)
-        
+
         norms = torch.stack(norms)
-        preds = torch.argmin(norms, dim=1)
+        preds = torch.argmin(norms, dim=0)
 
         return preds.cuda()
 
@@ -272,10 +269,13 @@ class Variations_Model():
 
                 # train
                 self.train(split)
+
+                # post train weights updating
+                self.post_train_weights_update()
                
-                if split > 0:
+                #if split > 0:
                     # balanced finetuning over the exemplars
-                    self.balanced_finetuning(split)
+                    #self.balanced_finetuning(split)
 
                 # update representation
                 self.build_exemplars_set(self.trainset, split)                    
@@ -289,6 +289,36 @@ class Variations_Model():
         # close the file writer
         self.writer.close_file()
 
+    
+    def post_train_weights_update(self):
+        '''
+        Variation
+        ---
+        Instead of preserving knowledge before training, switch the current
+        weights with those learned in the preaviuos split (for old step classes)
+        then those in the last layer of the old network
+        '''
+        
+        old_nodes = self.old_net.fc.out_features
+        in_features = self.old_net.fc.in_features
+
+        ### Keep the learned weights
+        new_weights = self.net.fc.weight.data
+        old_weights = self.old_net.fc.weight.data
+
+        # update the weights in the last layer
+        linear = nn.Linear(in_features, old_nodes + 10)
+        linear.weight.data[:old_nodes] = old_weights
+        linear.weight.data[old_nodes:] = new_weights
+
+        # substitute the last layer
+        self.net.fc = linear
+        self.net.cuda()
+
+
+    
+    
+    
     def distillation(self, inputs, new_onehot_labels, split):
         m = nn.Sigmoid()
         # compute the old network's outputs for the new classes
