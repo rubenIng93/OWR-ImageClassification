@@ -450,21 +450,39 @@ class Variations_Model():
             # print(targets)
             # get the predictions
             if split > 0:
-                new_outputs = self.net(images)
-                old_outputs = self.old_net(images)
+                
+                with torch.no_grad():
+                    new_outputs = self.net(images)
+                    old_outputs = self.old_net(images)
 
-                # get the more confident prediction
-                # get the predictions
-                top_new, _ = torch.topk(new_outputs, 2)
-                top_old, _ = torch.topk(old_outputs, 2)
+                    # get the more confident prediction
+                    # get the predictions
+                    top_new, _ = torch.topk(new_outputs, 2)
+                    top_old, _ = torch.topk(old_outputs, 2)
 
-                # measure the difference
-                diff_new = torch.diff(top_new) * -1.0
-                diff_old = torch.diff(top_old) * -1.0
-                # get the predictions
-                _, preds = torch.max(new_outputs, 1) \
-                    if diff_new >= diff_old \
-                        else torch.max(old_outputs, 1)   
+                    # measure the difference
+                    diff_new = torch.diff(top_new) * -1.0
+                    diff_old = torch.diff(top_old) * -1.0
+                    # get the predictions        
+                   
+                    preds = []
+                    for idx in range(new_outputs.shape[0]):
+                        if diff_new[idx] >= diff_old[idx]:
+                            pred = np.argmax(new_outputs[idx].cpu().numpy())
+                            #print(pred)
+                            preds.append(pred)
+                        else:
+                            pred = np.argmax(old_outputs[idx].cpu().numpy())
+                            #print(pred)
+                            preds.append(pred)
+
+                    preds = torch.tensor(preds).cuda()
+
+                    '''
+                    _, preds = torch.max(new_outputs, 1) \
+                        if diff_new >= diff_old \
+                            else torch.max(old_outputs, 1) 
+                    '''
             
             else:
                 outputs = self.net(images)
@@ -489,10 +507,11 @@ class Variations_Model():
 
         confusionMatrixData = confusion_matrix(
             self.all_targets.cpu().numpy(),
-            self.all_predictions.cpu().numpy()
+            self.all_predictions.detach().cpu().numpy()
         )
 
         #self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
         # print(confusionMatrixData.diagonal()/confusionMatrixData.sum(1))
 
         plotConfusionMatrix("Finetuning", confusionMatrixData)
+        
