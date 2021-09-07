@@ -448,23 +448,27 @@ class Variations_Model():
             targets = map_label_2(self.map, targets)
             # print(targets)
             # get the predictions
+            if split > 0:
+                new_outputs = self.net(images)
+                old_outputs = self.old_net(images)
 
-            new_outputs = self.net(images)
-            old_outputs = self.old_net(images)
+                # get the more confident prediction
+                # get the predictions
+                top_new, _ = torch.topk(new_outputs, 2)
+                top_old, _ = torch.topk(old_outputs, 2)
 
-            # get the more confident prediction
-            # get the predictions
-            top_new, _ = torch.topk(new_outputs, 2)
-            top_old, _ = torch.topk(old_outputs, 2)
-
-            # measure the difference
-            diff_new = torch.diff(top_new) * -1.0
-            diff_old = torch.diff(top_old) * -1.0
-
-            # get the predictions
-            _, preds = torch.max(new_outputs, 1) \
-                if diff_new >= diff_old \
-                    else torch.max(old_outputs, 1)   
+                # measure the difference
+                diff_new = torch.diff(top_new) * -1.0
+                diff_old = torch.diff(top_old) * -1.0
+                # get the predictions
+                _, preds = torch.max(new_outputs, 1) \
+                    if diff_new >= diff_old \
+                        else torch.max(old_outputs, 1)   
+            
+            else:
+                outputs = self.net(images)
+                # get the predictions
+                _, preds = torch.max(outputs, 1) 
             
             
             self.all_targets = torch.cat(
