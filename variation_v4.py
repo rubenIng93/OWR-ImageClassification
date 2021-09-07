@@ -434,7 +434,8 @@ class Variations_Model():
 
         # set the network to test mode
         self.net.train(False)
-        self.old_net.train(False)
+        if split > 0:
+            self.old_net.train(False)
         # initialize the metric for test
         running_corrects_test = 0
 
