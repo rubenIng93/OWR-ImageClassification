@@ -1,6 +1,7 @@
 from tqdm import tqdm
 from OWR_Tools.utils import *
 from OWR_Tools.resnet import resnet32 as rn32
+from OWR_Tools.snn_loss import SNNLoss
 import numpy as np
 from torch.backends import cudnn
 import torch
@@ -107,7 +108,7 @@ class Variations_Model():
                 # get the score
                 outputs = self.net(inputs)
                 # compute the loss
-                loss = self.criterion(outputs, onehot_labels)
+                loss = self.criterion(outputs, onehot_labels) + self.snn_loss(outputs, labels)
                 # reset the gradients
                 self.optimizer.zero_grad()
 
@@ -201,6 +202,7 @@ class Variations_Model():
             # reset the net
             self.net = rn32().cuda()
             self.criterion = nn.BCEWithLogitsLoss()
+            self.snn_loss = SNNLoss()
 
             # the 10 iterations for finetuning, 10 classes each
             for split in range(0, self.splits):
@@ -481,12 +483,12 @@ class Variations_Model():
                     for idx in range(new_outputs.shape[0]):
                         if diff_new[idx] >= diff_old[idx]:
                             pred = np.argmax(new_outputs[idx].cpu().numpy())
-                            corrects_new += (pred == targets[idx].cpu.numpy())
+                            corrects_new += (pred == targets[idx].cpu().numpy())
                             num_prediction_new_net += 1
                             preds.append(pred)
                         else:
                             pred = np.argmax(old_outputs[idx].cpu().numpy())
-                            corrects_old += (pred == targets[idx].cpu.numpy())
+                            corrects_old += (pred == targets[idx].cpu().numpy())
                             num_prediction_old_net += 1
                             preds.append(pred)
 
