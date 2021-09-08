@@ -364,68 +364,6 @@ class Variations_Model():
         for k in self.exemplars_set.keys():
             self.exemplars_set[k] = self.exemplars_set[k][:new_m]
 
-    def balanced_finetuning(self, split, epochs=30):
-        '''
-        End-to-End Incremental Learning paper.
-        Use the exemplars for finetuning with small learning rate
-        '''
-
-        print('\nBalanced Finetuning step')
-        # print(self.accuracy_per_class)
-
-        exemplars = []
-        # print(self.exemplars_set.keys)
-        for label in self.exemplars_set.keys():
-            # print(label)
-            if (self.accuracy_per_class[label] < 0.5):
-                print(label)
-                exemplars.extend(self.exemplars_set[label])
-
-        # print(exemplars)
-
-        if (len(exemplars) > 0):
-            exemplars_loader = DataLoader(exemplars, batch_size=self.batch_size,
-                                          shuffle=True, num_workers=2)
-
-            parameters_to_optimize = self.net.parameters()
-
-            optimizer = optim.SGD(parameters_to_optimize,
-                                  lr=1, momentum=0.9, weight_decay=0.00001)
-            scheduler = optim.lr_scheduler.MultiStepLR(
-                self.optimizer, [9, 19], gamma=0.1)
-
-            for e in range(epochs):
-
-                # iterate over the batches
-                for inputs, labels in exemplars_loader:
-
-                    # move to GPUs
-                    inputs = inputs.cuda()
-                    # print(labels)
-                    labels = map_label_2(self.map, labels)
-                    # map the label in range [split * 10, split + 10 * 10]
-                    # labels = map_label(labels, self.trainset.actual_classes, split)
-                    # transform it in one hot encoding to fit the BCELoss
-                    # dimension [batchsize, classes]
-                    onehot_labels = torch.eye(split*10+10)[labels].to("cuda")
-
-                    # set the network to train mode
-                    self.net.train()
-
-                    # get the score
-                    outputs = self.net(inputs)
-                    # compute the loss
-                    loss = self.criterion(outputs, onehot_labels)
-                    # reset the gradients
-                    optimizer.zero_grad()
-
-                    # propagate the derivatives
-                    loss.backward()
-
-                    optimizer.step()
-
-                # let the scheduler goes to the next epoch
-                scheduler.step()
 
 
     def test(self, split):
@@ -476,7 +414,7 @@ class Variations_Model():
 
                     # measure the difference
                     diff_new = torch.diff(top_new) * -1.0
-                    diff_old = torch.diff(top_old) * -1.0
+                    diff_old = torch.diff(top_old) * -1.0/(self.splits-split)
                     # get the predictions        
                    
                     preds = []
