@@ -12,7 +12,7 @@ except:
 
 def plotConfusionMatrix(method, confusionMatrixData):
     fig,ax=plt.subplots(figsize=(10,10))
-    sns.heatmap(confusionMatrixData,cmap='seismic',ax=ax)
+    sns.heatmap(confusionMatrixData,cmap='Greens',ax=ax)
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
     plt.title("Confusion Matrix {}".format(method))

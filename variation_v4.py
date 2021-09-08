@@ -60,6 +60,8 @@ class Variations_Model():
         self.current_ex_means = []
 
         self.accuracy_per_class = []
+        self.nets_calls_per_split = {}
+        self.corrects_nets_per_split = {}
 
         # Optimization of cuda resources
         cudnn.benchmark
@@ -438,16 +440,26 @@ class Variations_Model():
             self.old_net.train(False)
         # initialize the metric for test
         running_corrects_test = 0
+        num_prediction_old_net = 0
+        num_prediction_new_net = 0
+        corrects_new = 0
+        corrects_old = 0
+        count_old_imgs = 0
+        count_new_imgs = 0
 
         # iterate over the test dataloader
         for images, targets in tqdm(self.test_dataloader):
+
             # move to GPUs
             images = images.cuda()
             targets = targets.cuda()
             # map the label in range [0, n_classes - 1]
-            # print(targets)
             targets = map_label_2(self.map, targets)
-            # print(targets)
+
+            # update statistics
+            count_new_imgs += torch.sum(targets >= split*10)
+            count_old_imgs += torch.sum(targets < split*10)
+
             # get the predictions
             if split > 0:
                 
@@ -469,20 +481,16 @@ class Variations_Model():
                     for idx in range(new_outputs.shape[0]):
                         if diff_new[idx] >= diff_old[idx]:
                             pred = np.argmax(new_outputs[idx].cpu().numpy())
-                            #print(pred)
+                            corrects_new += (pred == targets[idx].cpu.numpy())
+                            num_prediction_new_net += 1
                             preds.append(pred)
                         else:
                             pred = np.argmax(old_outputs[idx].cpu().numpy())
-                            #print(pred)
+                            corrects_old += (pred == targets[idx].cpu.numpy())
+                            num_prediction_old_net += 1
                             preds.append(pred)
 
-                    preds = torch.tensor(preds).cuda()
-
-                    '''
-                    _, preds = torch.max(new_outputs, 1) \
-                        if diff_new >= diff_old \
-                            else torch.max(old_outputs, 1) 
-                    '''
+                    preds = torch.tensor(preds).cuda()                    
             
             else:
                 outputs = self.net(images)
@@ -510,8 +518,20 @@ class Variations_Model():
             self.all_predictions.detach().cpu().numpy()
         )
 
-        #self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
-        # print(confusionMatrixData.diagonal()/confusionMatrixData.sum(1))
+        print(f'\nNets predictions distribution:')
+        print(f'New =   {num_prediction_new_net/len(self.test_dataloader.dataset)*100:.2f} %\n'+\
+            f'Old =  {num_prediction_old_net/len(self.test_dataloader.dataset)*100:.2f} %')
 
-        plotConfusionMatrix("Finetuning", confusionMatrixData)
+        print(f'Accuracy per net:')
+        print(f'New net =   {corrects_new/num_prediction_new_net*100:.2f} %\n'+\
+            f'Old net = {corrects_old / num_prediction_old_net*100:.2f} %')
+
+        self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
+        print(f'Accuracy per class = {confusionMatrixData.diagonal()/confusionMatrixData.sum(1)}')
+        
+        # track the variation statistics
+        self.nets_calls_per_split[split] = (num_prediction_new_net, num_prediction_old_net)
+        self.corrects_nets_per_split[split] = (corrects_new, corrects_old)
+
+        plotConfusionMatrix("Variation", confusionMatrixData)
         
