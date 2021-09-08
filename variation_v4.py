@@ -518,20 +518,24 @@ class Variations_Model():
             self.all_predictions.detach().cpu().numpy()
         )
 
-        print(f'\nNets predictions distribution:')
-        print(f'New =   {num_prediction_new_net/len(self.test_dataloader.dataset)*100:.2f} %\n'+\
-            f'Old =  {num_prediction_old_net/len(self.test_dataloader.dataset)*100:.2f} %')
-
-        print(f'Accuracy per net:')
-        print(f'New net =   {corrects_new/num_prediction_new_net*100:.2f} %\n'+\
-            f'Old net = {corrects_old / num_prediction_old_net*100:.2f} %')
+        plotConfusionMatrix("Variation", confusionMatrixData)
 
         self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
-        print(f'Accuracy per class = {confusionMatrixData.diagonal()/confusionMatrixData.sum(1)}')
-        
-        # track the variation statistics
-        self.nets_calls_per_split[split] = (num_prediction_new_net, num_prediction_old_net)
-        self.corrects_nets_per_split[split] = (corrects_new, corrects_old)
+        print(f'Accuracy per class = {self.accuracy_per_class}')
 
-        plotConfusionMatrix("Variation", confusionMatrixData)
+        if split > 0:
+            print(f'\nNets predictions distribution:')
+            print(f'New =   {num_prediction_new_net/len(self.test_dataloader.dataset)*100:.2f} %\n'+\
+                f'Old =  {num_prediction_old_net/len(self.test_dataloader.dataset)*100:.2f} %')
+
+            print(f'Accuracy per net:')
+            print(f'New net =   {corrects_new/num_prediction_new_net*100:.2f} %\n'+\
+                f'Old net = {corrects_old / num_prediction_old_net*100:.2f} %')
+
+            
+            # track the variation statistics
+            self.nets_calls_per_split[split] = (num_prediction_new_net, num_prediction_old_net)
+            self.corrects_nets_per_split[split] = (corrects_new, corrects_old)
+
+        
         
