@@ -1,7 +1,6 @@
 from tqdm import tqdm
 from OWR_Tools.utils import *
 from OWR_Tools.resnet import resnet32 as rn32
-from OWR_Tools.snn_loss import SNNLoss
 import numpy as np
 from torch.backends import cudnn
 import torch
@@ -108,7 +107,7 @@ class Variations_Model():
                 # get the score
                 outputs = self.net(inputs)
                 # compute the loss
-                loss = self.criterion(outputs, onehot_labels) + self.snn_loss(outputs, labels)
+                loss = self.criterion(outputs, onehot_labels)
                 # reset the gradients
                 self.optimizer.zero_grad()
 
@@ -202,7 +201,6 @@ class Variations_Model():
             # reset the net
             self.net = rn32().cuda()
             self.criterion = nn.BCEWithLogitsLoss()
-            self.snn_loss = SNNLoss()
 
             # the 10 iterations for finetuning, 10 classes each
             for split in range(0, self.splits):
