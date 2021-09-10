@@ -6,7 +6,7 @@ Open World Recognition in Image Classification project for Machine Learning and 
 * Learning without forgetting (usage of distillation loss)
 * iCarl (distillation + exemplars)
 
-![Screenshot](plots/comparison.png)
+![Screenshot](plots/IL_accuracy_comparison.png)
 
 ### Ablation studies:
 * Classifiers
