@@ -16,8 +16,7 @@ Open World Recognition in Image Classification project for Machine Learning and 
     - Cosine Layer + losses as detailed in 
         > Learning a Unified Classifier Incrementally via Rebalancing by Hue *et all* 
 
-![Screenshot](plots/classifier_study.png)
-***MUST BE UPDATED***
+![Screenshot](plots/classifiers_study.png)
 
 * Losses (classification + distillation)
     - iCaRL (BCE + lfc) **baseline**
@@ -27,7 +26,6 @@ Open World Recognition in Image Classification project for Machine Learning and 
     - CE + L2
 
 ![Screenshot](plots/losses_study.png)
-
 
 
 ### Dataset usage - example
