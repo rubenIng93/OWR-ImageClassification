@@ -489,6 +489,7 @@ class CSEnvironment():
             #ax.legend(*scatter.legend_elements(),title="Classes")
             ax.xaxis.set_visible(False)
             ax.yaxis.set_visible(False)
+            plt.title('t-SNE 2D Exemplars features visualization')
             plt.show()
 
 
