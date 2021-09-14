@@ -487,6 +487,8 @@ class CSEnvironment():
             #ax = fig.add_subplot(111, projection='3d')
             scatter = ax.scatter(X_red[:,0], X_red[:,1], c=np_labels, cmap='tab20', s=2)
             #ax.legend(*scatter.legend_elements(),title="Classes")
+            ax.xaxis.set_visible(False)
+            ax.yaxis.set_visible(False)
             plt.show()
 
 
