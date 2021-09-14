@@ -485,7 +485,8 @@ class CSEnvironment():
             X_red = TSNE(n_components=3).fit_transform(np_features)
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
-            ax.scatter(X_red[:,0], X_red[:,1], X_red[:,2], c=np_labels)
+            scatter = ax.scatter(X_red[:,0], X_red[:,1], X_red[:,2], c=np_labels)
+            ax.legend(*scatter.legend_elements(), title="Classes")
             plt.show()
 
 
