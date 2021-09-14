@@ -16,6 +16,10 @@ from sklearn.neighbors import KNeighborsClassifier
 import math
 import torch.nn.functional as F
 import numpy.ma as ma
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
 try:
     import cPickle as pickle
 except:
@@ -453,7 +457,6 @@ class CSEnvironment():
         '''
         k: the number of nearest neighbors
         '''
-
         print('Train KNN')
         exemplars = []
         for label in self.exemplars_set.keys():
@@ -474,8 +477,19 @@ class CSEnvironment():
                 labels.append(lbs)
             torch_features = torch.cat(features)
             torch_labels = torch.cat(labels)
-            self.knn.fit(torch_features.cpu().numpy(),
-                         torch_labels.cpu().numpy())
+            np_features = torch_features.cpu().numpy()
+            np_labels = torch_labels.cpu().numpy()
+            self.knn.fit(np_features, np_labels)
+
+            ## Visualization through t-SNE
+            X_red = TSNE(n_components=3).fit_transform(np_features)
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            ax.scatter(X_red[:,0], X_red[:,1], X_red[:,2], c=np_labels)
+            plt.show()
+
+
+            
 
     '''
     TEST
