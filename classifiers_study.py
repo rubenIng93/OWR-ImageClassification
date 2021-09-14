@@ -482,11 +482,11 @@ class CSEnvironment():
             self.knn.fit(np_features, np_labels)
 
             ## Visualization through t-SNE
-            X_red = TSNE(n_components=3).fit_transform(np_features)
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-            scatter = ax.scatter(X_red[:,0], X_red[:,1], X_red[:,2], c=np_labels)
-            ax.legend(*scatter.legend_elements(), title="Classes")
+            X_red = TSNE(n_components=2).fit_transform(np_features)
+            fig, ax = plt.subplots()
+            #ax = fig.add_subplot(111, projection='3d')
+            scatter = ax.scatter(X_red[:,0], X_red[:,1], c=np_labels, cmap='tab20', s=2)
+            #ax.legend(*scatter.legend_elements(),title="Classes")
             plt.show()
 
 
