@@ -483,7 +483,7 @@ class CSEnvironment():
 
             ## Visualization through t-SNE
             X_red = TSNE(n_components=2).fit_transform(np_features)
-            fig, ax = plt.subplots()
+            fig, ax = plt.subplots(figsize=(15,10))
             #ax = fig.add_subplot(111, projection='3d')
             scatter = ax.scatter(X_red[:,0], X_red[:,1], c=np_labels, cmap='tab20', s=2)
             #ax.legend(*scatter.legend_elements(),title="Classes")
