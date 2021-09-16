@@ -16,7 +16,7 @@ from sklearn.metrics import confusion_matrix
 class Open_World():
 
     def __init__(self, seeds, file_writer, trainset, testset,
-                 epochs, net, splits, b_size, threshold, naive=False):
+                 epochs, net, splits, b_size, threshold, naive=True):
         '''
         Args:
         - seeds: the list of seeds, aimed to the external loop;
