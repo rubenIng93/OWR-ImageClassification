@@ -412,7 +412,7 @@ class Variations_Model():
 
                     # measure the difference
                     diff_new = torch.diff(top_new) * -1.0
-                    diff_old = torch.diff(top_old) * -1.0/(self.splits/(split+1))
+                    diff_old = torch.diff(top_old) * -1.0/(10/(split+1))
                     # get the predictions        
                    
                     preds = []
