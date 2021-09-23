@@ -28,7 +28,6 @@ class Variations_Model():
         - splits: the number of splits in which the classes are divided
         - scheduler: the training scheduler
         - b_size: the size of batches
-        - mode: 'finetuning', 'lwf' or 'icarl'
         '''
 
         self.seeds = seeds
@@ -155,39 +154,6 @@ class Variations_Model():
             self.accuracy_per_class = confusionMatrixData.diagonal()/confusionMatrixData.sum(1)
             # print(self.accuracy_per_class)
 
-    def classify(self, net, inputs):
-
-        self.net.eval()
-
-        means = {}  # the keys are the mapped labels
-        # nearest means class classifier
-        for label in self.exemplars_set.keys():
-            loader = DataLoader(self.exemplars_set[label], batch_size=len(self.exemplars_set[label])
-                                )
-            with torch.no_grad():
-                for img, _ in loader:  # a single batch
-                    img = img.cuda()
-                    net = net.cuda()
-                    features = net.extract_features(img)
-                    features = features / features.norm()
-                    # this is the mean of all images in the same class exemplars
-                    mean = torch.mean(features, 0)
-                    means[label] = mean
-
-        # assing the class to the inputs
-        norms = []
-        features = net.extract_features(inputs)
-        for k in means.keys():
-            mean_k = means[k]
-            mean_k = mean_k/mean_k.norm()
-            norm = torch.norm((features - mean_k), dim=1)
-            #print(f"Norm shape: {norm.shape}")
-            norms.append(norm)
-
-        norms = torch.stack(norms)
-        preds = torch.argmin(norms, dim=0)
-
-        return preds.cuda()
 
     def run_loop(self):
 
