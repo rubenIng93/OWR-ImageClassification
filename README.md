@@ -27,6 +27,16 @@ Open World Recognition in Image Classification project for Machine Learning and 
 
 ![Screenshot](plots/losses_study.png)
 
+### Open World setting:
+* Naive rejection strategy
+![Screenshot](plots/open_world_h_means.png)
+* Our variations
+![Screenshot](plots/open_world_h_means_var.png)
+
+# Proposed variation
+![Screenshot](plots/variation_aggregated.png)
+![Screenshot](plots/variation_comparison.png)
+
 
 ### Dataset usage - example
 
